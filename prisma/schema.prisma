@@ -1,0 +1,67 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Categoria {
+  id        String   @id @default(uuid())
+  nombre    String
+  tipo      String   // 'ingreso' | 'gasto'
+  eliminado Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  motivos      Motivo[]
+  transacciones Transaccion[]
+}
+
+model Motivo {
+  id                   String   @id @default(uuid())
+  nombre               String
+  categoriaId          String
+  mostrarSinTransacciones Boolean @default(false)
+  orden                Int      @default(0)
+  eliminado            Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  categoria    Categoria    @relation(fields: [categoriaId], references: [id])
+  transacciones Transaccion[]
+}
+
+model Transaccion {
+  id          String   @id @default(uuid())
+  motivoId    String
+  categoriaId String
+  monto       Decimal  @db.Decimal(15, 2)
+  fecha       DateTime
+  descripcion String?
+  facturable  Boolean  @default(false)
+  eliminado   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  motivo    Motivo    @relation(fields: [motivoId], references: [id])
+  categoria Categoria @relation(fields: [categoriaId], references: [id])
+  archivos  Archivo[]
+}
+
+model Archivo {
+  id           String   @id @default(uuid())
+  tipo         String   // 'imagen' | 'pdf' | etc
+  nombre       String
+  url          String
+  transaccionId String
+  eliminado    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  transaccion Transaccion @relation(fields: [transaccionId], references: [id])
+}
