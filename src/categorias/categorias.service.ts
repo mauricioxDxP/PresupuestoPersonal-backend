@@ -12,7 +12,7 @@ export class CategoriasService {
 
   constructor() {
     const connectionString = process.env.DATABASE_URL || '';
-    this.prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }, { prepare: false }) });
+    this.prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
     this.logger.log('CategoriasService created its own PrismaClient');
   }
 
@@ -41,7 +41,7 @@ export class CategoriasService {
 
       const result = await this.prisma.categoria.findMany({
         where,
-        orderBy: { nombre: 'asc' },
+        orderBy: { orden: 'asc' },
       });
       
       this.logger.log('Found ' + result.length + ' categorias');
@@ -70,10 +70,15 @@ export class CategoriasService {
   async update(id: string, updateCategoriaDto: UpdateCategoriaDto): Promise<Categoria> {
     await this.findOne(id);
 
+    const data: any = { ...updateCategoriaDto };
+    if (data.orden !== undefined) {
+      data.orden = Number(data.orden);
+    }
+
     try {
       return await this.prisma.categoria.update({
         where: { id },
-        data: updateCategoriaDto,
+        data,
       });
     } catch (_error) {
       throw new InternalServerErrorException('Error al actualizar categoría');

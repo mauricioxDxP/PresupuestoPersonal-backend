@@ -36,7 +36,12 @@ export class CategoriasController {
 
   @Patch('categorias/:id')
   update(@Param('id') id: string, @Body() updateCategoriaDto: UpdateCategoriaDto) {
-    return this.categoriasService.update(id, updateCategoriaDto);
+    // Forzar conversión de orden a número (viene como string del frontend)
+    const body = updateCategoriaDto as any;
+    if (body.orden !== undefined && body.orden !== null) {
+      body.orden = Number(body.orden);
+    }
+    return this.categoriasService.update(id, body);
   }
 
   @Delete('categorias/:id')

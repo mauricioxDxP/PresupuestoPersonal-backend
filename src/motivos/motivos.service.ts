@@ -12,7 +12,7 @@ export class MotivosService {
 
   constructor() {
     const connectionString = process.env.DATABASE_URL || '';
-    this.prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }, { prepare: false }) });
+    this.prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
     this.logger.log('MotivosService created its own PrismaClient');
   }
 

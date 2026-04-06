@@ -12,7 +12,7 @@ export class TransaccionesService {
 
   constructor() {
     const connectionString = process.env.DATABASE_URL || '';
-    this.prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }, { prepare: false }) });
+    this.prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
     this.logger.log('TransaccionesService created its own PrismaClient');
   }
 
@@ -155,6 +155,58 @@ export class TransaccionesService {
       totalGastos,
       balance: totalIngresos - totalGastos,
       porCategoria: Object.values(porCategoria),
+    };
+  }
+
+  /**
+   * Obtiene todas las transacciones, categorías y motivos de un mes específico
+   * para generar el reporte mensual jerárquico.
+   */
+  async getReporteMensual(anio: number, mes: number) {
+    // Fecha inicio y fin del mes en UTC para evitar desfase de zona horaria
+    const fechaInicio = new Date(Date.UTC(anio, mes - 1, 1, 0, 0, 0, 0));
+    const fechaFin = new Date(Date.UTC(anio, mes, 0, 23, 59, 59, 999));
+
+    // Obtener todas las transacciones del mes
+    const transacciones = await this.prisma.transaccion.findMany({
+      where: {
+        eliminado: false,
+        fecha: {
+          gte: fechaInicio,
+          lte: fechaFin,
+        },
+      },
+      include: {
+        motivo: true,
+        categoria: true,
+      },
+      orderBy: [
+        { categoria: { nombre: 'asc' } },
+        { motivo: { orden: 'asc' } },
+        { fecha: 'desc' },
+        { createdAt: 'desc' },
+      ],
+    });
+
+    // Obtener todas las categorías y motivos para incluir los que no tienen transacciones
+    const [categorias, motivos] = await Promise.all([
+      this.prisma.categoria.findMany({
+        where: { eliminado: false },
+        orderBy: { orden: 'asc' },
+      }),
+      this.prisma.motivo.findMany({
+        where: { eliminado: false },
+        orderBy: [{ categoriaId: 'asc' }, { orden: 'asc' }],
+      }),
+    ]);
+
+    return {
+      transacciones,
+      categorias,
+      motivos,
+      anio,
+      mes,
+      nombreMes: fechaInicio.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }),
     };
   }
 

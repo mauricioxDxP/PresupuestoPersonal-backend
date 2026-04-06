@@ -30,6 +30,9 @@ let TransaccionesController = class TransaccionesController {
     getReportes() {
         return this.transaccionesService.getReportes();
     }
+    getReporteMensual(anio, mes) {
+        return this.transaccionesService.getReporteMensual(parseInt(anio), parseInt(mes));
+    }
     findOne(id) {
         return this.transaccionesService.findOne(id);
     }
@@ -66,6 +69,14 @@ __decorate([
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], TransaccionesController.prototype, "getReportes", null);
+__decorate([
+    (0, common_1.Get)('reporte-mensual'),
+    __param(0, (0, common_1.Query)('anio')),
+    __param(1, (0, common_1.Query)('mes')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", void 0)
+], TransaccionesController.prototype, "getReporteMensual", null);
 __decorate([
     (0, common_1.Get)(':id'),
     __param(0, (0, common_1.Param)('id')),

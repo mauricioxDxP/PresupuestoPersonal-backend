@@ -32,6 +32,14 @@ export class TransaccionesController {
     return this.transaccionesService.getReportes();
   }
 
+  @Get('reporte-mensual')
+  getReporteMensual(
+    @Query('anio') anio: string,
+    @Query('mes') mes: string,
+  ) {
+    return this.transaccionesService.getReporteMensual(parseInt(anio), parseInt(mes));
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.transaccionesService.findOne(id);

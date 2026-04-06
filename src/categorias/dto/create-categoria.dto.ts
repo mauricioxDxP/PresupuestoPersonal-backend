@@ -6,14 +6,7 @@ export class CreateCategoriaDto {
 
   @IsIn(['ingreso', 'gasto'])
   tipo: string;
-}
 
-export class UpdateCategoriaDto {
-  @IsString()
   @IsOptional()
-  nombre?: string;
-
-  @IsIn(['ingreso', 'gasto'])
-  @IsOptional()
-  tipo?: string;
+  orden?: number;
 }

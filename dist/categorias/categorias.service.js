@@ -43,7 +43,7 @@ let CategoriasService = CategoriasService_1 = class CategoriasService {
             this.logger.log('Query where: ' + JSON.stringify(where));
             const result = await this.prisma.categoria.findMany({
                 where,
-                orderBy: { nombre: 'asc' },
+                orderBy: { orden: 'asc' },
             });
             this.logger.log('Found ' + result.length + ' categorias');
             return result;

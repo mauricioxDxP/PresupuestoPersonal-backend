@@ -149,6 +149,47 @@ let TransaccionesService = TransaccionesService_1 = class TransaccionesService {
             porCategoria: Object.values(porCategoria),
         };
     }
+    async getReporteMensual(anio, mes) {
+        const fechaInicio = new Date(Date.UTC(anio, mes - 1, 1, 0, 0, 0, 0));
+        const fechaFin = new Date(Date.UTC(anio, mes, 0, 23, 59, 59, 999));
+        const transacciones = await this.prisma.transaccion.findMany({
+            where: {
+                eliminado: false,
+                fecha: {
+                    gte: fechaInicio,
+                    lte: fechaFin,
+                },
+            },
+            include: {
+                motivo: true,
+                categoria: true,
+            },
+            orderBy: [
+                { categoria: { nombre: 'asc' } },
+                { motivo: { orden: 'asc' } },
+                { fecha: 'desc' },
+                { createdAt: 'desc' },
+            ],
+        });
+        const [categorias, motivos] = await Promise.all([
+            this.prisma.categoria.findMany({
+                where: { eliminado: false },
+                orderBy: { orden: 'asc' },
+            }),
+            this.prisma.motivo.findMany({
+                where: { eliminado: false },
+                orderBy: [{ categoriaId: 'asc' }, { orden: 'asc' }],
+            }),
+        ]);
+        return {
+            transacciones,
+            categorias,
+            motivos,
+            anio,
+            mes,
+            nombreMes: fechaInicio.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }),
+        };
+    }
     buildWhereClause(filtros) {
         const where = { eliminado: false };
         if (!filtros)

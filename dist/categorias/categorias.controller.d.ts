@@ -12,6 +12,7 @@ export declare class CategoriasController {
     create(createCategoriaDto: CreateCategoriaDto): Promise<{
         nombre: string;
         tipo: string;
+        orden: number;
         id: string;
         eliminado: boolean;
         createdAt: Date;
@@ -20,6 +21,7 @@ export declare class CategoriasController {
     findAll(tipo?: string): Promise<{
         nombre: string;
         tipo: string;
+        orden: number;
         id: string;
         eliminado: boolean;
         createdAt: Date;
@@ -28,6 +30,7 @@ export declare class CategoriasController {
     findOne(id: string): Promise<{
         nombre: string;
         tipo: string;
+        orden: number;
         id: string;
         eliminado: boolean;
         createdAt: Date;
@@ -36,6 +39,7 @@ export declare class CategoriasController {
     update(id: string, updateCategoriaDto: UpdateCategoriaDto): Promise<{
         nombre: string;
         tipo: string;
+        orden: number;
         id: string;
         eliminado: boolean;
         createdAt: Date;
@@ -44,6 +48,7 @@ export declare class CategoriasController {
     remove(id: string): Promise<{
         nombre: string;
         tipo: string;
+        orden: number;
         id: string;
         eliminado: boolean;
         createdAt: Date;

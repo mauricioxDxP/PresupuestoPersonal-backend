@@ -8,4 +8,7 @@ export class UpdateCategoriaDto {
   @IsIn(['ingreso', 'gasto'])
   @IsOptional()
   tipo?: string;
+
+  @IsOptional()
+  orden?: number;
 }

@@ -11,6 +11,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UpdateCategoriaDto = exports.CreateCategoriaDto = void 0;
 const class_validator_1 = require("class-validator");
+const class_transformer_1 = require("class-transformer");
 class CreateCategoriaDto {
 }
 exports.CreateCategoriaDto = CreateCategoriaDto;
@@ -22,6 +23,12 @@ __decorate([
     (0, class_validator_1.IsIn)(['ingreso', 'gasto']),
     __metadata("design:type", String)
 ], CreateCategoriaDto.prototype, "tipo", void 0);
+__decorate([
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_transformer_1.Transform)(({ value }) => Number(value)),
+    __metadata("design:type", Number)
+], CreateCategoriaDto.prototype, "orden", void 0);
 class UpdateCategoriaDto {
 }
 exports.UpdateCategoriaDto = UpdateCategoriaDto;
@@ -35,4 +42,10 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", String)
 ], UpdateCategoriaDto.prototype, "tipo", void 0);
+__decorate([
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_transformer_1.Transform)(({ value }) => Number(value)),
+    __metadata("design:type", Number)
+], UpdateCategoriaDto.prototype, "orden", void 0);
 //# sourceMappingURL=create-categoria.dto.js.map
