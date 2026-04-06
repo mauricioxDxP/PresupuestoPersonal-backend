@@ -28,8 +28,13 @@ export class TransaccionesController {
   }
 
   @Get('reportes')
-  getReportes() {
-    return this.transaccionesService.getReportes();
+  getReportes(
+    @Query('fechaInicio') fechaInicio?: string,
+    @Query('fechaFin') fechaFin?: string,
+    @Query('categoriaId') categoriaId?: string,
+    @Query('motivoId') motivoId?: string,
+  ) {
+    return this.transaccionesService.getReportes({ fechaInicio, fechaFin, categoriaId, motivoId });
   }
 
   @Get('reporte-mensual')

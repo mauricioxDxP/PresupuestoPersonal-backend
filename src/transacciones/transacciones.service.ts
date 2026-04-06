@@ -119,9 +119,11 @@ export class TransaccionesService {
     });
   }
 
-  async getReportes(): Promise<Reportes> {
+  async getReportes(filtros?: TransaccionFilters): Promise<Reportes> {
+    const where = this.buildWhereClause(filtros);
+
     const transacciones = await this.prisma.transaccion.findMany({
-      where: { eliminado: false },
+      where,
       include: {
         categoria: true,
       },
