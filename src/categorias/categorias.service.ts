@@ -12,7 +12,7 @@ export class CategoriasService {
 
   constructor() {
     const connectionString = process.env.DATABASE_URL || '';
-    this.prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
+    this.prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }, { prepare: false }) });
     this.logger.log('CategoriasService created its own PrismaClient');
   }
 
