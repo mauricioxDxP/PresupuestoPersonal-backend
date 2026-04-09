@@ -42,9 +42,9 @@ USER nodejs
 # Expose port (backend uses 3001 by default)
 EXPOSE 3001
 
-# Health check - using curl (available in node:20-alpine)
+# Health check - using the /health endpoint
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:3001 || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:3001/health || exit 1
 
 # Start the application
 CMD ["npm", "run", "start"]
