@@ -43,7 +43,11 @@ USER nodejs
 EXPOSE 3001
 
 # Health check - using the /health endpoint
-HEALTHCHECK --start-period=30s CMD wget --spider http://localhost:3001/health || exit 1
-
+HEALTHCHECK \
+  --interval=30s \
+  --timeout=5s \
+  --retries=5 \
+  --start-period=40s \
+  CMD wget --spider http://127.0.0.1:3001/health || exit 1
 # Start the application
 CMD ["npm", "run", "start"]
