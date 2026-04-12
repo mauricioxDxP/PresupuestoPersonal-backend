@@ -19,6 +19,10 @@ export class ArchivosService {
   private initSupabase() {
     const supabaseUrl = process.env.SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_KEY;
+    
+    this.logger.log(`📦 SUPABASE_URL: ${supabaseUrl ? 'CARGADA ✓' : 'VACÍA ✗'}`);
+    this.logger.log(`📦 SUPABASE_KEY: ${supabaseKey ? 'CARGADA ✓' : 'VACÍA ✗'}`);
+    
     if (supabaseUrl && supabaseKey) {
       this.supabase = createClient(supabaseUrl, supabaseKey);
       this.logger.log('✅ Supabase client initialized');
@@ -27,7 +31,7 @@ export class ArchivosService {
     }
   }
 
-  async upload(file: Express.Multer.File, transaccionId: string) {
+  async upload(file: any, transaccionId: string) {
     if (!this.supabase) {
       throw new Error('Supabase no configurado');
     }
@@ -46,6 +50,8 @@ export class ArchivosService {
 
     // Obtener URL pública
     const { data: urlData } = await this.supabase.storage.from(bucket).getPublicUrl(fileName);
+
+    this.logger.log(`📎 Upload: ${file.originalname} (${file.mimetype}, ${file.buffer.length} bytes) -> ${urlData.publicUrl}`);
 
     // Determinar tipo
     let tipo = 'otro';

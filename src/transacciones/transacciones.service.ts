@@ -26,7 +26,9 @@ export class TransaccionesService {
         include: {
           motivo: true,
           categoria: true,
-          archivos: true,
+          archivos: {
+            where: { eliminado: false },
+          },
         },
       });
     } catch (error) {
@@ -49,7 +51,9 @@ export class TransaccionesService {
         include: {
           motivo: { include: { categoria: true } },
           categoria: true,
-          archivos: true,
+          archivos: {
+            where: { eliminado: false },
+          },
         },
         orderBy: [{ fecha: 'desc' }, { createdAt: 'desc' }],
         skip,
@@ -75,7 +79,9 @@ export class TransaccionesService {
       include: {
         motivo: { include: { categoria: true } },
         categoria: true,
-        archivos: true,
+        archivos: {
+          where: { eliminado: false },
+        },
       },
     });
 
@@ -100,7 +106,9 @@ export class TransaccionesService {
         include: {
           motivo: { include: { categoria: true } },
           categoria: true,
-          archivos: true,
+          archivos: {
+            where: { eliminado: false },
+          },
         },
       });
     } catch (error) {
