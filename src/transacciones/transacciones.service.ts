@@ -25,15 +25,32 @@ export class TransaccionesService {
     this.logger.log('TransaccionesService created its own PrismaClient');
   }
 
-  private buildCasaFilter(user: AuthUser | undefined): object {
+  private async getCasaIds(user: AuthUser): Promise<string[]> {
+    if (!user) return [];
+    if (user.rol === Rol.ADMIN) return [];
+    if (user.casaIds?.length) return user.casaIds;
+    const usuarioCasas = await this.prisma.usuarioCasa.findMany({
+      where: { usuarioId: user.id },
+      select: { casaId: true },
+    });
+    return usuarioCasas.map(uc => uc.casaId);
+  }
+
+  private async buildCasaFilter(user: AuthUser | undefined): Promise<object> {
     if (!user) return {};
     if (user.rol === Rol.ADMIN) return {};
-    if (!user.casaIds?.length) return { id: 'NULL_CASA_ACCESS_DENIED' };
-    return { casaId: { in: user.casaIds } };
+    const casaIds = await this.getCasaIds(user);
+    if (!casaIds.length) return { id: 'NULL_CASA_ACCESS_DENIED' };
+    return { casaId: { in: casaIds } };
   }
 
   async create(createTransaccionDto: CreateTransaccionDto, user: AuthUser): Promise<Transaccion> {
-    if (!user?.casaIds?.length) {
+    // Get casaIds from JWT first, fall back to DB if empty
+    let casaIds = user.casaIds || [];
+    if (!casaIds.length) {
+      casaIds = await this.getCasaIds(user);
+    }
+    if (!casaIds.length) {
       throw new ForbiddenException('No tienes una casa asignada');
     }
 
@@ -51,8 +68,8 @@ export class TransaccionesService {
     }
 
     // Use the casaId from the transaccion or default to first casa
-    const casaId = createTransaccionDto.casaId || user.casaIds[0];
-    if (user.rol !== Rol.ADMIN && !user.casaIds.includes(casaId)) {
+    const casaId = createTransaccionDto.casaId || casaIds[0];
+    if (user.rol !== Rol.ADMIN && !casaIds.includes(casaId)) {
       throw new ForbiddenException('La casa no te pertenece');
     }
 
@@ -84,7 +101,7 @@ export class TransaccionesService {
     user?: AuthUser,
     xCasaId?: string,
   ): Promise<PaginatedResult<Transaccion>> {
-    const where = this.buildWhereClause(filtros, user, xCasaId);
+    const where = await this.buildWhereClause(filtros, user, xCasaId);
     
     const page = Math.max(1, pagination?.page ?? 1);
     const limit = Math.min(100, Math.max(1, pagination?.limit ?? 20));
@@ -119,7 +136,7 @@ export class TransaccionesService {
   }
 
   async findOne(id: string, user?: AuthUser): Promise<Transaccion> {
-    const casaFilter = this.buildCasaFilter(user);
+    const casaFilter = await this.buildCasaFilter(user);
 
     const transaccion = await this.prisma.transaccion.findFirst({
       where: { 
@@ -203,7 +220,7 @@ export class TransaccionesService {
   }
 
   async getReportes(filtros?: TransaccionFilters, user?: AuthUser, xCasaId?: string): Promise<Reportes> {
-    const where = this.buildWhereClause(filtros, user, xCasaId);
+    const where = await this.buildWhereClause(filtros, user, xCasaId);
 
     const transacciones = await this.prisma.transaccion.findMany({
       where,
@@ -248,7 +265,7 @@ export class TransaccionesService {
    * para generar el reporte mensual jerárquico.
    */
   async getReporteMensual(anio: number, mes: number, user?: AuthUser, xCasaId?: string) {
-    const casaFilter = this.buildCasaFilter(user);
+    const casaFilter = await this.buildCasaFilter(user);
 
     // Apply x-casa-id filter if provided (for non-ADMIN users)
     let casaIdFilter: any = {};
@@ -308,9 +325,10 @@ export class TransaccionesService {
   /**
    * Construye la cláusula where para Prisma según los filtros recibidos
    */
-  private buildWhereClause(filtros?: TransaccionFilters, user?: AuthUser, xCasaId?: string): any {
+  private async buildWhereClause(filtros?: TransaccionFilters, user?: AuthUser, xCasaId?: string): Promise<any> {
+    const casaFilter = await this.buildCasaFilter(user);
     const where: any = { 
-      ...this.buildCasaFilter(user),
+      ...casaFilter,
       eliminado: false 
     };
 

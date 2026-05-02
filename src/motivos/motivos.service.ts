@@ -22,21 +22,38 @@ export class MotivosService {
     this.logger.log('MotivosService created its own PrismaClient');
   }
 
-  private buildCasaFilter(user: AuthUser | undefined): object {
+  private async getCasaIds(user: AuthUser): Promise<string[]> {
+    if (!user) return [];
+    if (user.rol === Rol.ADMIN) return [];
+    if (user.casaIds?.length) return user.casaIds;
+    const usuarioCasas = await this.prisma.usuarioCasa.findMany({
+      where: { usuarioId: user.id },
+      select: { casaId: true },
+    });
+    return usuarioCasas.map(uc => uc.casaId);
+  }
+
+  private async buildCasaFilter(user: AuthUser | undefined): Promise<object> {
     if (!user) return {};
     if (user.rol === Rol.ADMIN) return {};
-    if (!user.casaIds?.length) return { id: 'NULL_CASA_ACCESS_DENIED' };
-    return { casaId: { in: user.casaIds } };
+    const casaIds = await this.getCasaIds(user);
+    if (!casaIds.length) return { id: 'NULL_CASA_ACCESS_DENIED' };
+    return { casaId: { in: casaIds } };
   }
 
   async create(createMotivoDto: CreateMotivoDto, user: AuthUser): Promise<Motivo> {
-    if (!user?.casaIds?.length) {
+    // Get casaIds from JWT first, fall back to DB if empty
+    let casaIds = user.casaIds || [];
+    if (!casaIds.length) {
+      casaIds = await this.getCasaIds(user);
+    }
+    if (!casaIds.length) {
       throw new ForbiddenException('No tienes una casa asignada');
     }
 
     // For non-ADMIN, validate that the casaId belongs to user
-    const casaId = createMotivoDto.casaId || user.casaIds[0];
-    if (user.rol !== Rol.ADMIN && !user.casaIds.includes(casaId)) {
+    const casaId = createMotivoDto.casaId || casaIds[0];
+    if (user.rol !== Rol.ADMIN && !casaIds.includes(casaId)) {
       throw new ForbiddenException('La casa no te pertenece');
     }
 
@@ -45,7 +62,7 @@ export class MotivosService {
       const categoria = await this.prisma.categoria.findUnique({
         where: { id: createMotivoDto.categoriaId },
       });
-      if (!categoria || !user.casaIds.includes(categoria.casaId)) {
+      if (!categoria || !casaIds.includes(categoria.casaId)) {
         throw new ForbiddenException('La categoría no pertenece a tu casa');
       }
     }
@@ -65,8 +82,9 @@ export class MotivosService {
   }
 
   async findAll(categoriaId?: string, user?: AuthUser, xCasaId?: string): Promise<Motivo[]> {
+    const casaFilter = await this.buildCasaFilter(user);
     const where: any = { 
-      ...this.buildCasaFilter(user),
+      ...casaFilter,
       eliminado: false 
     };
 
@@ -87,7 +105,7 @@ export class MotivosService {
   }
 
   async findOne(id: string, user?: AuthUser): Promise<Motivo> {
-    const casaFilter = this.buildCasaFilter(user);
+    const casaFilter = await this.buildCasaFilter(user);
 
     const motivo = await this.prisma.motivo.findFirst({
       where: { 

@@ -175,6 +175,35 @@ export class UsersService {
       throw new ForbiddenException('No tienes permisos para ver usuarios');
     }
 
+    // ADMIN can see all users without casaId filter
+    if (requestingUser.rol === Rol.ADMIN && !casaId) {
+      return this.prisma.usuario.findMany({
+        where: { eliminado: false },
+        select: {
+          id: true,
+          email: true,
+          nombre: true,
+          rol: true,
+          createdAt: true,
+          eliminado: true,
+          casas: {
+            include: { casa: { select: { id: true, nombre: true } } },
+          },
+          categoriaPermisos: {
+            include: { categoria: { select: { id: true, nombre: true } } },
+          },
+          motivoPermisos: {
+            include: { motivo: { select: { id: true, nombre: true } } },
+          },
+        },
+      });
+    }
+
+    // MAESTRO_CASA and USUARIO need a valid casaId
+    if (!casaId && requestingUser.rol !== Rol.ADMIN) {
+      throw new ForbiddenException('Debes especificar una casa para ver usuarios');
+    }
+
     // MAESTRO_CASA can only see users in their own casas
     if (requestingUser.rol === Rol.MAESTRO_CASA && !requestingUser.casaIds.includes(casaId)) {
       throw new ForbiddenException('No puedes ver usuarios de otra casa');

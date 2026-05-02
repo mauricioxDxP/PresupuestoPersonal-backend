@@ -23,21 +23,39 @@ export class CategoriasService {
     this.logger.log('CategoriasService created its own PrismaClient');
   }
 
-  private buildCasaFilter(user: AuthUser | undefined): object {
+  private async getCasaIds(user: AuthUser): Promise<string[]> {
+    if (!user) return [];
+    if (user.rol === Rol.ADMIN) return []; // ADMIN no necesita filtro
+    // Usar casaIds del JWT solo si tiene, sino consultar DB
+    if (user.casaIds?.length) return user.casaIds;
+    const usuarioCasas = await this.prisma.usuarioCasa.findMany({
+      where: { usuarioId: user.id },
+      select: { casaId: true },
+    });
+    return usuarioCasas.map(uc => uc.casaId);
+  }
+
+  private async buildCasaFilter(user: AuthUser | undefined): Promise<object> {
     if (!user) return {};
     if (user.rol === Rol.ADMIN) return {};
-    if (!user.casaIds?.length) return { id: 'NULL_CASA_ACCESS_DENIED' };
-    return { casaId: { in: user.casaIds } };
+    const casaIds = await this.getCasaIds(user);
+    if (!casaIds.length) return { id: 'NULL_CASA_ACCESS_DENIED' };
+    return { casaId: { in: casaIds } };
   }
 
   async create(createCategoriaDto: CreateCategoriaDto, user: AuthUser): Promise<Categoria> {
-    if (!user?.casaIds?.length) {
+    // Get casaIds from JWT first, fall back to DB if empty
+    let casaIds = user.casaIds || [];
+    if (!casaIds.length) {
+      casaIds = await this.getCasaIds(user);
+    }
+    if (!casaIds.length) {
       throw new ForbiddenException('No tienes una casa asignada');
     }
 
     // For non-ADMIN, use the first casaId (or validate against provided casaId)
-    const casaId = createCategoriaDto.casaId || user.casaIds[0];
-    if (user.rol !== Rol.ADMIN && !user.casaIds.includes(casaId)) {
+    const casaId = createCategoriaDto.casaId || casaIds[0];
+    if (user.rol !== Rol.ADMIN && !casaIds.includes(casaId)) {
       throw new ForbiddenException('La casa no te pertenece');
     }
 
@@ -57,8 +75,9 @@ export class CategoriasService {
 
   async findAll(tipo?: string, user?: AuthUser, xCasaId?: string): Promise<Categoria[]> {
     try {
+      const casaFilter = await this.buildCasaFilter(user);
       const where: any = { 
-        ...this.buildCasaFilter(user),
+        ...casaFilter,
         eliminado: false 
       };
       
@@ -85,7 +104,7 @@ export class CategoriasService {
   }
 
   async findOne(id: string, user?: AuthUser): Promise<Categoria> {
-    const casaFilter = this.buildCasaFilter(user);
+    const casaFilter = await this.buildCasaFilter(user);
     
     const categoria = await this.prisma.categoria.findFirst({
       where: { 
