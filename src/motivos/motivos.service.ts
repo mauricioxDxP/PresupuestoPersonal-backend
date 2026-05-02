@@ -4,6 +4,7 @@ import { UpdateMotivoDto } from './dto/update-motivo.dto';
 import { Motivo, PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { ReorderItem, Rol } from '../common/types';
+import { getPerCasaRol, getUserCasaIdsFromDb, requireMaestroCasaRol } from '../common/auth-helpers';
 
 interface AuthUser {
   id: string;
@@ -26,11 +27,7 @@ export class MotivosService {
     if (!user) return [];
     if (user.rol === Rol.ADMIN) return [];
     if (user.casaIds?.length) return user.casaIds;
-    const usuarioCasas = await this.prisma.usuarioCasa.findMany({
-      where: { usuarioId: user.id },
-      select: { casaId: true },
-    });
-    return usuarioCasas.map(uc => uc.casaId);
+    return getUserCasaIdsFromDb(this.prisma, user.id);
   }
 
   private async buildCasaFilter(user: AuthUser | undefined): Promise<object> {
@@ -42,7 +39,6 @@ export class MotivosService {
   }
 
   async create(createMotivoDto: CreateMotivoDto, user: AuthUser): Promise<Motivo> {
-    // Get casaIds from JWT first, fall back to DB if empty
     let casaIds = user.casaIds || [];
     if (!casaIds.length) {
       casaIds = await this.getCasaIds(user);
@@ -51,7 +47,6 @@ export class MotivosService {
       throw new ForbiddenException('No tienes una casa asignada');
     }
 
-    // For non-ADMIN, validate that the casaId belongs to user
     const casaId = createMotivoDto.casaId || casaIds[0];
     if (user.rol !== Rol.ADMIN && !casaIds.includes(casaId)) {
       throw new ForbiddenException('La casa no te pertenece');
@@ -83,12 +78,11 @@ export class MotivosService {
 
   async findAll(categoriaId?: string, user?: AuthUser, xCasaId?: string): Promise<Motivo[]> {
     const casaFilter = await this.buildCasaFilter(user);
-    const where: any = { 
+    const where: any = {
       ...casaFilter,
-      eliminado: false 
+      eliminado: false
     };
 
-    // Apply x-casa-id filter if provided (for non-ADMIN users)
     if (xCasaId && user?.rol !== Rol.ADMIN) {
       where.casaId = xCasaId;
     }
@@ -108,10 +102,10 @@ export class MotivosService {
     const casaFilter = await this.buildCasaFilter(user);
 
     const motivo = await this.prisma.motivo.findFirst({
-      where: { 
-        id, 
+      where: {
+        id,
         ...casaFilter,
-        eliminado: false 
+        eliminado: false
       },
       include: { categoria: true },
     });
@@ -123,12 +117,16 @@ export class MotivosService {
   }
 
   async update(id: string, updateMotivoDto: UpdateMotivoDto, user?: AuthUser): Promise<Motivo> {
-    await this.findOne(id, user);
+    const motivo = await this.prisma.motivo.findUnique({
+      where: { id, eliminado: false },
+      select: { id: true, casaId: true },
+    });
 
-    // Verify user has permission to edit
-    if (user && user.rol === Rol.USUARIO) {
-      throw new ForbiddenException('No tienes permisos para editar motivos');
+    if (!motivo) {
+      throw new NotFoundException(`Motivo ${id} no encontrado`);
     }
+
+    await requireMaestroCasaRol(this.prisma, user!, motivo.casaId, 'editar motivos');
 
     try {
       return await this.prisma.motivo.update({
@@ -143,23 +141,35 @@ export class MotivosService {
   }
 
   async remove(id: string, user?: AuthUser): Promise<Motivo> {
-    await this.findOne(id, user);
+    const motivo = await this.prisma.motivo.findUnique({
+      where: { id, eliminado: false },
+      select: { id: true, casaId: true },
+    });
 
-    // Verify user has permission to delete
-    if (user && user.rol === Rol.USUARIO) {
-      throw new ForbiddenException('No tienes permisos para eliminar motivos');
+    if (!motivo) {
+      throw new NotFoundException(`Motivo ${id} no encontrado`);
     }
 
-    return await this.prisma.motivo.update({
+    await requireMaestroCasaRol(this.prisma, user!, motivo.casaId, 'eliminar motivos');
+
+    return this.prisma.motivo.update({
       where: { id },
       data: { eliminado: true },
     });
   }
 
   async reorder(motivos: ReorderItem[], user?: AuthUser): Promise<Motivo[]> {
-    // Verify user has permission
-    if (user && user.rol === Rol.USUARIO) {
-      throw new ForbiddenException('No tienes permisos para reordenar motivos');
+    if (user?.rol !== Rol.ADMIN) {
+      // For non-ADMIN, we need to verify the user has access to all motivos being reordered
+      const ids = motivos.map(m => m.id);
+      const dbMotivos = await this.prisma.motivo.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, casaId: true },
+      });
+
+      for (const motivo of dbMotivos) {
+        await requireMaestroCasaRol(this.prisma, user!, motivo.casaId, 'reordenar motivos');
+      }
     }
 
     const updates = motivos.map((m) =>

@@ -9,6 +9,7 @@ import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { CreateUserDto, UpdateUserDto, AssignPermisosDto, AssignMotivoPermisosDto, AssignCasaDto } from './dto/users.dto';
 import { Rol } from '../common/types';
+import { getUserCasaIdsFromDb, requireMaestroCasaRol, getPerCasaRol } from '../common/auth-helpers';
 
 interface AuthUser {
   id: string;

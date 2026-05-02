@@ -5,6 +5,7 @@ import { Categoria } from '@prisma/client';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Rol } from '../common/types';
+import { getPerCasaRol, getUserCasaIdsFromDb, requireMaestroCasaRol } from '../common/auth-helpers';
 
 interface AuthUser {
   id: string;
@@ -25,14 +26,9 @@ export class CategoriasService {
 
   private async getCasaIds(user: AuthUser): Promise<string[]> {
     if (!user) return [];
-    if (user.rol === Rol.ADMIN) return []; // ADMIN no necesita filtro
-    // Usar casaIds del JWT solo si tiene, sino consultar DB
+    if (user.rol === Rol.ADMIN) return [];
     if (user.casaIds?.length) return user.casaIds;
-    const usuarioCasas = await this.prisma.usuarioCasa.findMany({
-      where: { usuarioId: user.id },
-      select: { casaId: true },
-    });
-    return usuarioCasas.map(uc => uc.casaId);
+    return getUserCasaIdsFromDb(this.prisma, user.id);
   }
 
   private async buildCasaFilter(user: AuthUser | undefined): Promise<object> {
@@ -44,7 +40,6 @@ export class CategoriasService {
   }
 
   async create(createCategoriaDto: CreateCategoriaDto, user: AuthUser): Promise<Categoria> {
-    // Get casaIds from JWT first, fall back to DB if empty
     let casaIds = user.casaIds || [];
     if (!casaIds.length) {
       casaIds = await this.getCasaIds(user);
@@ -53,7 +48,6 @@ export class CategoriasService {
       throw new ForbiddenException('No tienes una casa asignada');
     }
 
-    // For non-ADMIN, use the first casaId (or validate against provided casaId)
     const casaId = createCategoriaDto.casaId || casaIds[0];
     if (user.rol !== Rol.ADMIN && !casaIds.includes(casaId)) {
       throw new ForbiddenException('La casa no te pertenece');
@@ -76,16 +70,15 @@ export class CategoriasService {
   async findAll(tipo?: string, user?: AuthUser, xCasaId?: string): Promise<Categoria[]> {
     try {
       const casaFilter = await this.buildCasaFilter(user);
-      const where: any = { 
+      const where: any = {
         ...casaFilter,
-        eliminado: false 
+        eliminado: false
       };
-      
-      // Apply x-casa-id filter if provided (for non-ADMIN users)
+
       if (xCasaId && user?.rol !== Rol.ADMIN) {
         where.casaId = xCasaId;
       }
-      
+
       if (tipo) {
         where.tipo = tipo;
       }
@@ -94,7 +87,7 @@ export class CategoriasService {
         where,
         orderBy: { orden: 'asc' },
       });
-      
+
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Error desconocido';
@@ -105,12 +98,12 @@ export class CategoriasService {
 
   async findOne(id: string, user?: AuthUser): Promise<Categoria> {
     const casaFilter = await this.buildCasaFilter(user);
-    
+
     const categoria = await this.prisma.categoria.findFirst({
-      where: { 
-        id, 
+      where: {
+        id,
         ...casaFilter,
-        eliminado: false 
+        eliminado: false
       },
       include: { motivos: true },
     });
@@ -122,12 +115,16 @@ export class CategoriasService {
   }
 
   async update(id: string, updateCategoriaDto: UpdateCategoriaDto, user?: AuthUser): Promise<Categoria> {
-    await this.findOne(id, user);
+    const categoria = await this.prisma.categoria.findUnique({
+      where: { id, eliminado: false },
+      select: { id: true, casaId: true },
+    });
 
-    // Verify user has permission to edit
-    if (user && user.rol === Rol.USUARIO) {
-      throw new ForbiddenException('No tienes permisos para editar categorías');
+    if (!categoria) {
+      throw new NotFoundException(`Categoría ${id} no encontrada`);
     }
+
+    await requireMaestroCasaRol(this.prisma, user!, categoria.casaId, 'editar categorías');
 
     const data: any = { ...updateCategoriaDto };
     if (data.orden !== undefined) {
@@ -145,14 +142,18 @@ export class CategoriasService {
   }
 
   async remove(id: string, user?: AuthUser): Promise<Categoria> {
-    await this.findOne(id, user);
+    const categoria = await this.prisma.categoria.findUnique({
+      where: { id, eliminado: false },
+      select: { id: true, casaId: true },
+    });
 
-    // Verify user has permission to delete
-    if (user && user.rol === Rol.USUARIO) {
-      throw new ForbiddenException('No tienes permisos para eliminar categorías');
+    if (!categoria) {
+      throw new NotFoundException(`Categoría ${id} no encontrada`);
     }
 
-    return await this.prisma.categoria.update({
+    await requireMaestroCasaRol(this.prisma, user!, categoria.casaId, 'eliminar categorías');
+
+    return this.prisma.categoria.update({
       where: { id },
       data: { eliminado: true },
     });

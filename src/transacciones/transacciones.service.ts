@@ -5,6 +5,7 @@ import { Transaccion, PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Reportes, TransaccionFilters, PaginationParams, PaginatedResult, Rol } from '../common/types';
 import { PermissionService } from '../auth/services/permission.service';
+import { getUserCasaIdsFromDb, requireMaestroCasaRol } from '../common/auth-helpers';
 
 interface AuthUser {
   id: string;
@@ -29,11 +30,7 @@ export class TransaccionesService {
     if (!user) return [];
     if (user.rol === Rol.ADMIN) return [];
     if (user.casaIds?.length) return user.casaIds;
-    const usuarioCasas = await this.prisma.usuarioCasa.findMany({
-      where: { usuarioId: user.id },
-      select: { casaId: true },
-    });
-    return usuarioCasas.map(uc => uc.casaId);
+    return getUserCasaIdsFromDb(this.prisma, user.id);
   }
 
   private async buildCasaFilter(user: AuthUser | undefined): Promise<object> {
@@ -45,7 +42,6 @@ export class TransaccionesService {
   }
 
   async create(createTransaccionDto: CreateTransaccionDto, user: AuthUser): Promise<Transaccion> {
-    // Get casaIds from JWT first, fall back to DB if empty
     let casaIds = user.casaIds || [];
     if (!casaIds.length) {
       casaIds = await this.getCasaIds(user);
@@ -55,7 +51,7 @@ export class TransaccionesService {
     }
 
     // Verify user has permission to create in this categoria/motivo
-    if (user.rol === Rol.USUARIO) {
+    if (user.rol !== Rol.ADMIN) {
       const hasPermission = await this.permissionService.checkPermission(
         user.id,
         createTransaccionDto.categoriaId,
@@ -67,7 +63,6 @@ export class TransaccionesService {
       }
     }
 
-    // Use the casaId from the transaccion or default to first casa
     const casaId = createTransaccionDto.casaId || casaIds[0];
     if (user.rol !== Rol.ADMIN && !casaIds.includes(casaId)) {
       throw new ForbiddenException('La casa no te pertenece');
@@ -96,13 +91,13 @@ export class TransaccionesService {
   }
 
   async findAll(
-    filtros?: TransaccionFilters, 
+    filtros?: TransaccionFilters,
     pagination?: PaginationParams,
     user?: AuthUser,
     xCasaId?: string,
   ): Promise<PaginatedResult<Transaccion>> {
     const where = await this.buildWhereClause(filtros, user, xCasaId);
-    
+
     const page = Math.max(1, pagination?.page ?? 1);
     const limit = Math.min(100, Math.max(1, pagination?.limit ?? 20));
     const skip = (page - 1) * limit;
@@ -139,10 +134,10 @@ export class TransaccionesService {
     const casaFilter = await this.buildCasaFilter(user);
 
     const transaccion = await this.prisma.transaccion.findFirst({
-      where: { 
-        id, 
+      where: {
+        id,
         ...casaFilter,
-        eliminado: false 
+        eliminado: false
       },
       include: {
         motivo: { include: { categoria: true } },
@@ -160,14 +155,20 @@ export class TransaccionesService {
   }
 
   async update(id: string, updateTransaccionDto: UpdateTransaccionDto, user?: AuthUser): Promise<Transaccion> {
-    await this.findOne(id, user);
+    const transaccion = await this.prisma.transaccion.findUnique({
+      where: { id, eliminado: false },
+      select: { id: true, casaId: true },
+    });
 
-    // Verify user has permission to edit
-    if (user && user.rol === Rol.USUARIO) {
-      // For update, we need to check the categoria/motivo being updated to
+    if (!transaccion) {
+      throw new NotFoundException(`Transacción ${id} no encontrada`);
+    }
+
+    // Verify user has permission to edit (USUARIO needs specific permission)
+    if (user?.rol !== Rol.ADMIN) {
       const categoriaId = updateTransaccionDto.categoriaId;
       const motivoId = updateTransaccionDto.motivoId;
-      
+
       if (categoriaId || motivoId) {
         const hasPermission = await this.permissionService.checkPermission(
           user.id,
@@ -206,12 +207,16 @@ export class TransaccionesService {
   }
 
   async remove(id: string, user?: AuthUser): Promise<Transaccion> {
-    await this.findOne(id, user);
+    const transaccion = await this.prisma.transaccion.findUnique({
+      where: { id, eliminado: false },
+      select: { id: true, casaId: true },
+    });
 
-    // Verify user has permission to delete
-    if (user && user.rol === Rol.USUARIO) {
-      throw new ForbiddenException('No tienes permisos para eliminar transacciones');
+    if (!transaccion) {
+      throw new NotFoundException(`Transacción ${id} no encontrada`);
     }
+
+    await requireMaestroCasaRol(this.prisma, user!, transaccion.casaId, 'eliminar transacciones');
 
     return this.prisma.transaccion.update({
       where: { id },
@@ -260,24 +265,17 @@ export class TransaccionesService {
     };
   }
 
-  /**
-   * Obtiene todas las transacciones, categorías y motivos de un mes específico
-   * para generar el reporte mensual jerárquico.
-   */
   async getReporteMensual(anio: number, mes: number, user?: AuthUser, xCasaId?: string) {
     const casaFilter = await this.buildCasaFilter(user);
 
-    // Apply x-casa-id filter if provided (for non-ADMIN users)
     let casaIdFilter: any = {};
     if (xCasaId && user?.rol !== Rol.ADMIN) {
       casaIdFilter = { casaId: xCasaId };
     }
 
-    // Fecha inicio y fin del mes en UTC para evitar desfase de zona horaria
     const fechaInicio = new Date(Date.UTC(anio, mes - 1, 1, 0, 0, 0, 0));
     const fechaFin = new Date(Date.UTC(anio, mes, 0, 23, 59, 59, 999));
 
-    // Obtener todas las transacciones del mes
     const transacciones = await this.prisma.transaccion.findMany({
       where: {
         eliminado: false,
@@ -300,7 +298,6 @@ export class TransaccionesService {
       ],
     });
 
-    // Obtener todas las categorías y motivos para incluir los que no tienen transacciones
     const [categorias, motivos] = await Promise.all([
       this.prisma.categoria.findMany({
         where: { eliminado: false, ...casaFilter, ...casaIdFilter },
@@ -322,24 +319,19 @@ export class TransaccionesService {
     };
   }
 
-  /**
-   * Construye la cláusula where para Prisma según los filtros recibidos
-   */
   private async buildWhereClause(filtros?: TransaccionFilters, user?: AuthUser, xCasaId?: string): Promise<any> {
     const casaFilter = await this.buildCasaFilter(user);
-    const where: any = { 
+    const where: any = {
       ...casaFilter,
-      eliminado: false 
+      eliminado: false
     };
 
-    // Apply x-casa-id filter if provided (for non-ADMIN users)
     if (xCasaId && user?.rol !== Rol.ADMIN) {
       where.casaId = xCasaId;
     }
 
     if (!filtros) return where;
 
-    // Filtro por rango de fechas
     if (filtros.fechaInicio || filtros.fechaFin) {
       where.fecha = {};
       if (filtros.fechaInicio) {
@@ -350,12 +342,10 @@ export class TransaccionesService {
       }
     }
 
-    // Filtro por categoría
     if (filtros.categoriaId) {
       where.categoriaId = filtros.categoriaId;
     }
 
-    // Filtro por motivo
     if (filtros.motivoId) {
       where.motivoId = filtros.motivoId;
     }

@@ -1,7 +1,15 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger, ForbiddenException } from '@nestjs/common';
 import { createClient } from '@supabase/supabase-js';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { Rol } from '../common/types';
+import { requireMaestroCasaRol } from '../common/auth-helpers';
+
+interface AuthUser {
+  id: string;
+  rol: Rol;
+  casaIds: string[];
+}
 
 @Injectable()
 export class ArchivosService {
@@ -19,10 +27,10 @@ export class ArchivosService {
   private initSupabase() {
     const supabaseUrl = process.env.SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_KEY;
-    
+
     this.logger.log(`📦 SUPABASE_URL: ${supabaseUrl ? 'CARGADA ✓' : 'VACÍA ✗'}`);
     this.logger.log(`📦 SUPABASE_KEY: ${supabaseKey ? 'CARGADA ✓' : 'VACÍA ✗'}`);
-    
+
     if (supabaseUrl && supabaseKey) {
       this.supabase = createClient(supabaseUrl, supabaseKey);
       this.logger.log('✅ Supabase client initialized');
@@ -31,12 +39,11 @@ export class ArchivosService {
     }
   }
 
-  async upload(file: any, transaccionId: string, user?: any) {
+  async upload(file: any, transaccionId: string, user?: AuthUser) {
     if (!this.supabase) {
       throw new Error('Supabase no configurado');
     }
 
-    // Get casaId from transaccion
     const transaccion = await this.prisma.transaccion.findUnique({
       where: { id: transaccionId },
       select: { casaId: true },
@@ -49,7 +56,6 @@ export class ArchivosService {
     const fileName = `${Date.now()}-${file.originalname}`;
     const bucket = 'archivos';
 
-    // Subir archivo a Supabase Storage
     const { data, error } = await this.supabase.storage.from(bucket).upload(fileName, file.buffer, {
       contentType: file.mimetype,
     });
@@ -58,12 +64,10 @@ export class ArchivosService {
       throw new Error(`Error al subir archivo: ${error.message}`);
     }
 
-    // Obtener URL pública
     const { data: urlData } = await this.supabase.storage.from(bucket).getPublicUrl(fileName);
 
     this.logger.log(`📎 Upload: ${file.originalname} (${file.mimetype}, ${file.buffer.length} bytes) -> ${urlData.publicUrl}`);
 
-    // Determinar tipo
     let tipo = 'otro';
     if (file.mimetype.startsWith('image/')) {
       tipo = 'imagen';
@@ -71,7 +75,6 @@ export class ArchivosService {
       tipo = 'pdf';
     }
 
-    // Guardar en base de datos con casaId
     return this.prisma.archivo.create({
       data: {
         tipo,
@@ -105,9 +108,18 @@ export class ArchivosService {
     return archivo;
   }
 
-  async remove(id: string) {
-    await this.findOne(id);
-    // Soft delete
+  async remove(id: string, user?: AuthUser) {
+    const archivo = await this.prisma.archivo.findUnique({
+      where: { id },
+      select: { id: true, casaId: true },
+    });
+
+    if (!archivo) {
+      throw new NotFoundException(`Archivo ${id} no encontrado`);
+    }
+
+    await requireMaestroCasaRol(this.prisma, user!, archivo.casaId, 'eliminar archivos');
+
     return this.prisma.archivo.update({
       where: { id },
       data: { eliminado: true },

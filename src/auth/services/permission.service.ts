@@ -2,10 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Rol } from '../../common/types';
+import { getPerCasaRol } from '../../common/auth-helpers';
 
 type Action = 'crear' | 'editar' | 'eliminar';
 
-interface AuthUser {
+interface AuthUserForPermisos {
   id: string;
   rol: Rol;
   casaIds: string[];
@@ -26,7 +27,6 @@ export class PermissionService {
     motivoId: string | null,
     action: Action,
   ): Promise<boolean> {
-    // Get user with their role and casaIds
     const usuario = await this.prisma.usuario.findUnique({
       where: { id: usuarioId, eliminado: false },
       include: {
@@ -38,8 +38,8 @@ export class PermissionService {
       return false;
     }
 
-    // ADMIN and MAESTRO_CASA have full access within their casas
-    if (usuario.rol === Rol.ADMIN || usuario.rol === Rol.MAESTRO_CASA) {
+    // ADMIN global has full access
+    if (usuario.rol === Rol.ADMIN) {
       return true;
     }
 
@@ -52,44 +52,58 @@ export class PermissionService {
       return false;
     }
 
-    // Check if categoria belongs to one of user's casas
-    const userCasaIds = usuario.casas.map(uc => uc.casaId);
-    if (!userCasaIds.includes(categoria.casaId)) {
-      return false;
+    // Build AuthUser-like object for getPerCasaRol
+    const authUser: AuthUserForPermisos = {
+      id: usuario.id,
+      rol: usuario.rol as Rol,
+      casaIds: usuario.casas.map(c => c.casaId),
+    };
+
+    // Check per-casa role from UsuarioCasa
+    const perCasaRol = await getPerCasaRol(this.prisma, authUser, categoria.casaId);
+
+    // MAESTRO_CASA per-casa has full access within that casa
+    if (perCasaRol === Rol.MAESTRO_CASA) {
+      return true;
     }
 
-    // If there's a motivoId, check motivo first (specific overrides general)
-    if (motivoId) {
-      const motivoPermiso = await this.prisma.usuarioMotivoPermiso.findUnique({
+    // USUARIO per-casa needs to check specific permissions
+    if (perCasaRol === Rol.USUARIO) {
+      // If there's a motivoId, check motivo first (specific overrides general)
+      if (motivoId) {
+        const motivoPermiso = await this.prisma.usuarioMotivoPermiso.findUnique({
+          where: {
+            usuarioId_motivoId: {
+              usuarioId,
+              motivoId,
+            },
+          },
+        });
+
+        if (motivoPermiso) {
+          return this.hasAction(motivoPermiso, action);
+        }
+      }
+
+      // Check categoria permission (unique key is [usuarioId, categoriaId])
+      const categoriaPermiso = await this.prisma.usuarioCategoriaPermiso.findUnique({
         where: {
-          usuarioId_motivoId: {
+          usuarioId_categoriaId: {
             usuarioId,
-            motivoId,
+            categoriaId,
           },
         },
       });
 
-      // If there's a specific motivo permission, it overrides
-      if (motivoPermiso) {
-        return this.hasAction(motivoPermiso, action);
+      if (categoriaPermiso) {
+        return this.hasAction(categoriaPermiso, action);
       }
+
+      // Default: no permission
+      return false;
     }
 
-    // Check categoria permission
-    const categoriaPermiso = await this.prisma.usuarioCategoriaPermiso.findUnique({
-      where: {
-        usuarioId_categoriaId: {
-          usuarioId,
-          categoriaId,
-        },
-      },
-    });
-
-    if (categoriaPermiso) {
-      return this.hasAction(categoriaPermiso, action);
-    }
-
-    // Default: no permission
+    // No role in this casa
     return false;
   }
 
