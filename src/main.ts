@@ -4,15 +4,20 @@ import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
 import { Request, Response, NextFunction } from 'express';
+const cors = require('cors');
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
+  
   logger.log('🔍 DATABASE_URL: ' + process.env.DATABASE_URL);
   
   const app = await NestFactory.create(AppModule, {
     logger: ['error', 'warn', 'log', 'debug', 'verbose'],
   });
-
+  app.use(cors({
+    origin: true,
+    credentials: true,
+  }));
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -20,20 +25,7 @@ async function bootstrap() {
     })
   );
   
-  app.use((req: Request, res: Response, next: NextFunction) => {
-  res.setHeader('Access-Control-Allow-Origin', 'https://presupuestopersonal.mauricioxdxp.site');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-casa-id');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
   
-  if (req.method === 'OPTIONS') {
-    res.status(204).end();
-    return;
-  }
-  
-  next();
-});
-
   // Global prefix for all routes
   app.setGlobalPrefix('api');
 
