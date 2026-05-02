@@ -43,12 +43,12 @@ USER nodejs
 # Expose port (backend uses 3001 by default)
 EXPOSE 3001
 
-# Health check - using the /health endpoint
+# Health check - using the /api/health endpoint (global prefix)
 HEALTHCHECK \
   --interval=30s \
   --timeout=5s \
   --retries=5 \
   --start-period=40s \
-  CMD wget --spider http://127.0.0.1:3001/health || exit 1
+  CMD wget --spider http://127.0.0.1:3001/api/health || exit 1
 # Start the application
 CMD ["npm", "run", "start"]
