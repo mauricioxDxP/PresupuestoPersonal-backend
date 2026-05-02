@@ -15,8 +15,13 @@ async function bootstrap() {
     logger: ['error', 'warn', 'log', 'debug', 'verbose'],
   });
   app.use(cors({
-    origin: true,
+    origin: [
+      'https://presupuestopersonal.mauricioxdxp.site',
+      'http://localhost:5173',
+    ],
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-casa-id'],
   }));
   app.useGlobalPipes(
     new ValidationPipe({
