@@ -10,6 +10,94 @@ datasource db {
   provider = "postgresql"
 }
 
+enum Rol {
+  ADMIN
+  MAESTRO_CASA
+  USUARIO
+}
+
+model Casa {
+  id        String   @id @default(uuid())
+  nombre    String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // New relation for multi-casa
+  usuariosMiembros   UsuarioCasa[]
+  // Old relation kept for backwards compatibility during migration
+  usuarios          Usuario[]
+  categorias        Categoria[]
+  motivos           Motivo[]
+  transacciones     Transaccion[]
+  archivos          Archivo[]
+}
+
+model UsuarioCasa {
+  id        String   @id @default(uuid())
+  usuarioId String
+  casaId    String
+  rol       Rol      @default(USUARIO)
+  createdAt DateTime @default(now())
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  casa    Casa    @relation(fields: [casaId], references: [id], onDelete: Cascade)
+
+  @@unique([usuarioId, casaId])
+}
+
+model Usuario {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String?
+  googleId     String?  @unique
+  nombre       String
+  rol          Rol      @default(USUARIO)
+  // KEPT for backwards compatibility - do NOT drop this column
+  casaId       String?
+  eliminado    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // New relation for multi-casa
+  casas              UsuarioCasa[]
+  // Old relation kept for backwards compatibility during migration
+  casa               Casa?                     @relation(fields: [casaId], references: [id])
+  categoriaPermisos  UsuarioCategoriaPermiso[]
+  motivoPermisos     UsuarioMotivoPermiso[]
+}
+
+model UsuarioCategoriaPermiso {
+  id          String   @id @default(uuid())
+  usuarioId   String
+  categoriaId String
+  puedeCrear  Boolean  @default(false)
+  puedeEditar Boolean  @default(false)
+  puedeEliminar Boolean @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  usuario   Usuario   @relation(fields: [usuarioId], references: [id])
+  categoria Categoria @relation(fields: [categoriaId], references: [id])
+
+  @@unique([usuarioId, categoriaId])
+}
+
+model UsuarioMotivoPermiso {
+  id            String   @id @default(uuid())
+  usuarioId     String
+  motivoId      String
+  puedeCrear    Boolean  @default(false)
+  puedeEditar   Boolean  @default(false)
+  puedeEliminar Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+  motivo  Motivo  @relation(fields: [motivoId], references: [id])
+
+  @@unique([usuarioId, motivoId])
+}
+
 model Categoria {
   id        String   @id @default(uuid())
   nombre    String
@@ -19,22 +107,30 @@ model Categoria {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  motivos      Motivo[]
-  transacciones Transaccion[]
+  casaId String
+
+  casa                    Casa                     @relation(fields: [casaId], references: [id])
+  motivos                Motivo[]
+  transacciones          Transaccion[]
+  categoriaPermisos      UsuarioCategoriaPermiso[]
 }
 
 model Motivo {
-  id                   String   @id @default(uuid())
-  nombre               String
-  categoriaId          String
+  id                     String   @id @default(uuid())
+  nombre                 String
+  categoriaId            String
   mostrarSinTransacciones Boolean @default(false)
-  orden                Int      @default(0)
-  eliminado            Boolean  @default(false)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  orden                  Int      @default(0)
+  eliminado              Boolean  @default(false)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
-  categoria    Categoria    @relation(fields: [categoriaId], references: [id])
-  transacciones Transaccion[]
+  casaId String
+
+  categoria             Categoria             @relation(fields: [categoriaId], references: [id])
+  transacciones         Transaccion[]
+  casa                  Casa                   @relation(fields: [casaId], references: [id])
+  motivoPermisos        UsuarioMotivoPermiso[]
 }
 
 model Transaccion {
@@ -49,9 +145,12 @@ model Transaccion {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  casaId String
+
   motivo    Motivo    @relation(fields: [motivoId], references: [id])
   categoria Categoria @relation(fields: [categoriaId], references: [id])
   archivos  Archivo[]
+  casa      Casa      @relation(fields: [casaId], references: [id])
 }
 
 model Archivo {
@@ -59,10 +158,13 @@ model Archivo {
   tipo         String   // 'imagen' | 'pdf' | etc
   nombre       String
   url          String
-  transaccionId String
   eliminado    Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  transaccionId String
+  casaId        String
+
   transaccion Transaccion @relation(fields: [transaccionId], references: [id])
+  casa        Casa        @relation(fields: [casaId], references: [id])
 }

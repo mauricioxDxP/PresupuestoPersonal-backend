@@ -31,9 +31,19 @@ export class ArchivosService {
     }
   }
 
-  async upload(file: any, transaccionId: string) {
+  async upload(file: any, transaccionId: string, user?: any) {
     if (!this.supabase) {
       throw new Error('Supabase no configurado');
+    }
+
+    // Get casaId from transaccion
+    const transaccion = await this.prisma.transaccion.findUnique({
+      where: { id: transaccionId },
+      select: { casaId: true },
+    });
+
+    if (!transaccion) {
+      throw new Error('Transacción no encontrada');
     }
 
     const fileName = `${Date.now()}-${file.originalname}`;
@@ -61,13 +71,14 @@ export class ArchivosService {
       tipo = 'pdf';
     }
 
-    // Guardar en base de datos
+    // Guardar en base de datos con casaId
     return this.prisma.archivo.create({
       data: {
         tipo,
         nombre: file.originalname,
         url: urlData.publicUrl,
         transaccionId,
+        casaId: transaccion.casaId,
       },
     });
   }

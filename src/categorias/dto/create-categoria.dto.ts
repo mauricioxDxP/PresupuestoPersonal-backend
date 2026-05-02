@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsIn } from 'class-validator';
+import { IsString, IsOptional, IsIn, IsUUID } from 'class-validator';
 
 export class CreateCategoriaDto {
   @IsString()
@@ -9,4 +9,8 @@ export class CreateCategoriaDto {
 
   @IsOptional()
   orden?: number;
+
+  @IsUUID()
+  @IsOptional()
+  casaId?: string;
 }

@@ -1,6 +1,33 @@
 // Tipos derivados del modelo de datos de Prisma
 // Útiles para el frontend y servicios
 
+// Enums
+export enum Rol {
+  ADMIN = 'ADMIN',
+  MAESTRO_CASA = 'MAESTRO_CASA',
+  USUARIO = 'USUARIO',
+}
+
+// JWT Payload
+export interface JwtPayload {
+  sub: string;        // userId
+  email: string;
+  nombre: string;
+  rol: Rol;
+  casaIds: string[];  // Array de casas (vacío para ADMIN que tiene acceso a todas)
+  iat?: number;
+  exp?: number;
+}
+
+// Usuario autenticado (extraído del request)
+export interface AuthUser {
+  id: string;
+  email: string;
+  rol: Rol;
+  casaIds: string[];
+  nombre: string;
+}
+
 // Filtros para consultas
 export interface CategoriaFilters {
   tipo?: 'ingreso' | 'gasto';

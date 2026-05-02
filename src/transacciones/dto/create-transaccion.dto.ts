@@ -20,6 +20,10 @@ export class CreateTransaccionDto {
   @IsBoolean()
   @IsOptional()
   facturable?: boolean;
+
+  @IsUUID()
+  @IsOptional()
+  casaId?: string;
 }
 
 export class UpdateTransaccionDto {
@@ -46,4 +50,8 @@ export class UpdateTransaccionDto {
   @IsBoolean()
   @IsOptional()
   facturable?: boolean;
+
+  @IsUUID()
+  @IsOptional()
+  casaId?: string;
 }

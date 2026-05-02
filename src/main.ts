@@ -21,6 +21,9 @@ async function bootstrap() {
   
   app.enableCors();
 
+  // Global prefix for all routes
+  app.setGlobalPrefix('api');
+
   const configService = app.get(ConfigService);
   const port = configService.get('PORT') || 3001;
   await app.listen(port, '0.0.0.0');

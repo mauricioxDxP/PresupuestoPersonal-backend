@@ -14,6 +14,10 @@ export class CreateMotivoDto {
   @IsNumber()
   @IsOptional()
   orden?: number;
+
+  @IsUUID()
+  @IsOptional()
+  casaId?: string;
 }
 
 export class UpdateMotivoDto {
@@ -32,4 +36,8 @@ export class UpdateMotivoDto {
   @IsNumber()
   @IsOptional()
   orden?: number;
+
+  @IsUUID()
+  @IsOptional()
+  casaId?: string;
 }
