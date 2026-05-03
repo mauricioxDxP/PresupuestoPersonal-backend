@@ -236,7 +236,7 @@ export class UsersService {
           include: { categoria: { select: { id: true, nombre: true } } },
         },
         motivoPermisos: {
-          include: { motivo: { select: { id: true, nombre: true } } },
+          include: { motivo: { select: { id: true, nombre: true, categoriaId: true } } },
         },
       },
     });

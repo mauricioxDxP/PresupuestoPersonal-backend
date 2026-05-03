@@ -236,7 +236,7 @@ export class TransaccionesService {
 
     let totalIngresos = 0;
     let totalGastos = 0;
-    const porCategoria: Record<string, { nombre: string; tipo: string; total: number }> = {};
+    const porCategoria: Record<string, { nombre: string; tipo: string; total: number; orden: number }> = {};
 
     for (const t of transacciones) {
       const monto = Number(t.monto);
@@ -252,16 +252,19 @@ export class TransaccionesService {
           nombre: t.categoria.nombre,
           tipo: t.categoria.tipo,
           total: 0,
+          orden: t.categoria.orden,
         };
       }
       porCategoria[catId].total += monto;
     }
 
+    const resultado = Object.values(porCategoria).sort((a, b) => a.orden - b.orden);
+
     return {
       totalIngresos,
       totalGastos,
       balance: totalIngresos - totalGastos,
-      porCategoria: Object.values(porCategoria),
+      porCategoria: resultado,
     };
   }
 
