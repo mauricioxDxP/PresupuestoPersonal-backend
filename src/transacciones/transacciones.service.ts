@@ -69,11 +69,12 @@ export class TransaccionesService {
     }
 
     try {
-      return await this.prisma.transaccion.create({
+      const transaccion = await this.prisma.transaccion.create({
         data: {
           ...createTransaccionDto,
           fecha: new Date(createTransaccionDto.fecha),
           casaId,
+          usuarioId: user.id,
         },
         include: {
           motivo: true,
@@ -81,38 +82,59 @@ export class TransaccionesService {
           archivos: {
             where: { eliminado: false },
           },
+          usuario: { select: { id: true, nombre: true, email: true } },
         },
       });
+
+      // Registrar historial de creación
+      await this.prisma.transaccionHistorial.create({
+        data: {
+          transaccionId: transaccion.id,
+          accion: 'CREAR',
+          usuarioId: user.id,
+          datosNuevos: transaccion as any,
+        },
+      });
+
+      return transaccion;
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Error desconocido';
-      this.logger.error('Error creating transaccion: ' + message);
-      throw new InternalServerErrorException('Error al crear transacción');
+      this.logger.error('Error al crear transacción:', error);
+      throw new InternalServerErrorException('Error al crear la transacción');
     }
   }
 
+  async getHistorial(transaccionId: string): Promise<any[]> {
+    const historial = await this.prisma.transaccionHistorial.findMany({
+      where: { transaccionId },
+      include: {
+        usuario: { select: { id: true, nombre: true, email: true } },
+      },
+      orderBy: { fecha: 'desc' },
+    });
+    return historial;
+  }
+
   async findAll(
-    filtros?: TransaccionFilters,
-    pagination?: PaginationParams,
+    filtros: TransaccionFilters,
+    pagination: PaginationParams,
     user?: AuthUser,
     xCasaId?: string,
   ): Promise<PaginatedResult<Transaccion>> {
     const where = await this.buildWhereClause(filtros, user, xCasaId);
-
-    const page = Math.max(1, pagination?.page ?? 1);
-    const limit = Math.min(100, Math.max(1, pagination?.limit ?? 20));
+    const page = pagination.page || 1;
+    const limit = pagination.limit || 50;
     const skip = (page - 1) * limit;
 
-    const [data, total] = await this.prisma.$transaction([
+    const [data, total] = await Promise.all([
       this.prisma.transaccion.findMany({
         where,
         include: {
           motivo: { include: { categoria: true } },
           categoria: true,
-          archivos: {
-            where: { eliminado: false },
-          },
+          archivos: { where: { eliminado: false } },
+          usuario: { select: { id: true, nombre: true, email: true } },
         },
-        orderBy: [{ fecha: 'desc' }, { createdAt: 'desc' }],
+        orderBy: { fecha: 'desc' },
         skip,
         take: limit,
       }),
@@ -121,12 +143,7 @@ export class TransaccionesService {
 
     return {
       data,
-      meta: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
+      meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
     };
   }
 
@@ -188,7 +205,17 @@ export class TransaccionesService {
     }
 
     try {
-      return await this.prisma.transaccion.update({
+      // Obtener estado actual antes de actualizar
+      const estadoAnterior = await this.prisma.transaccion.findUnique({
+        where: { id },
+        include: {
+          motivo: { include: { categoria: true } },
+          categoria: true,
+          archivos: { where: { eliminado: false } },
+        },
+      });
+
+      const updated = await this.prisma.transaccion.update({
         where: { id },
         data,
         include: {
@@ -197,8 +224,24 @@ export class TransaccionesService {
           archivos: {
             where: { eliminado: false },
           },
+          usuario: { select: { id: true, nombre: true, email: true } },
         },
       });
+
+      // Registrar historial de modificación
+      if (estadoAnterior && user) {
+        await this.prisma.transaccionHistorial.create({
+          data: {
+            transaccionId: id,
+            accion: 'MODIFICAR',
+            usuarioId: user.id,
+            datosAnteriores: estadoAnterior as any,
+            datosNuevos: updated as any,
+          },
+        });
+      }
+
+      return updated;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Error desconocido';
       this.logger.error('Error updating transaccion: ' + message);
@@ -209,7 +252,11 @@ export class TransaccionesService {
   async remove(id: string, user?: AuthUser): Promise<Transaccion> {
     const transaccion = await this.prisma.transaccion.findUnique({
       where: { id, eliminado: false },
-      select: { id: true, casaId: true },
+      include: {
+        motivo: { include: { categoria: true } },
+        categoria: true,
+        archivos: { where: { eliminado: false } },
+      },
     });
 
     if (!transaccion) {
@@ -218,10 +265,24 @@ export class TransaccionesService {
 
     await requireMaestroCasaRol(this.prisma, user!, transaccion.casaId, 'eliminar transacciones');
 
-    return this.prisma.transaccion.update({
+    const deleted = await this.prisma.transaccion.update({
       where: { id },
       data: { eliminado: true },
     });
+
+    // Registrar historial de eliminación
+    if (user) {
+      await this.prisma.transaccionHistorial.create({
+        data: {
+          transaccionId: id,
+          accion: 'ELIMINAR',
+          usuarioId: user.id,
+          datosAnteriores: transaccion as any,
+        },
+      });
+    }
+
+    return deleted;
   }
 
   async getReportes(filtros?: TransaccionFilters, user?: AuthUser, xCasaId?: string): Promise<Reportes> {

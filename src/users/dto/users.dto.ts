@@ -20,7 +20,11 @@ export class UpdateUserDto {
 
   @IsBoolean()
   @IsOptional()
-  eliminado?: boolean;
+  puedeEliminar?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  puedeVerTransaccionesOtros?: boolean;
 }
 
 export class AssignPermisosDto {
@@ -38,6 +42,10 @@ export class AssignPermisosDto {
   @IsBoolean()
   @IsOptional()
   puedeEliminar?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  puedeVerTransaccionesOtros?: boolean;
 }
 
 export class AssignMotivoPermisosDto {

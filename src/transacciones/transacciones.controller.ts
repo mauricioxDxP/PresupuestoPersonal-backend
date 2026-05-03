@@ -69,6 +69,11 @@ export class TransaccionesController {
     return this.transaccionesService.update(id, updateTransaccionDto, req.user);
   }
 
+  @Get(':id/historial')
+  getHistorial(@Param('id') id: string) {
+    return this.transaccionesService.getHistorial(id);
+  }
+
   @Delete(':id')
   remove(@Param('id') id: string, @Request() req: any) {
     return this.transaccionesService.remove(id, req.user);

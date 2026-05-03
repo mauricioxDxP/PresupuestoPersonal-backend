@@ -64,17 +64,20 @@ model Usuario {
   casa               Casa?                     @relation(fields: [casaId], references: [id])
   categoriaPermisos  UsuarioCategoriaPermiso[]
   motivoPermisos     UsuarioMotivoPermiso[]
+  transacciones      Transaccion[]
+  historialTransacciones TransaccionHistorial[]
 }
 
 model UsuarioCategoriaPermiso {
-  id          String   @id @default(uuid())
-  usuarioId   String
-  categoriaId String
-  puedeCrear  Boolean  @default(false)
-  puedeEditar Boolean  @default(false)
-  puedeEliminar Boolean @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                      String   @id @default(uuid())
+  usuarioId               String
+  categoriaId             String
+  puedeCrear              Boolean  @default(false)
+  puedeEditar             Boolean  @default(false)
+  puedeEliminar           Boolean  @default(false)
+  puedeVerTransaccionesOtros Boolean @default(false)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 
   usuario   Usuario   @relation(fields: [usuarioId], references: [id])
   categoria Categoria @relation(fields: [categoriaId], references: [id])
@@ -133,6 +136,12 @@ model Motivo {
   motivoPermisos        UsuarioMotivoPermiso[]
 }
 
+enum AccionHistorial {
+  CREAR
+  MODIFICAR
+  ELIMINAR
+}
+
 model Transaccion {
   id          String   @id @default(uuid())
   motivoId    String
@@ -146,11 +155,29 @@ model Transaccion {
   updatedAt   DateTime @updatedAt
 
   casaId String
+  usuarioId String
 
-  motivo    Motivo    @relation(fields: [motivoId], references: [id])
-  categoria Categoria @relation(fields: [categoriaId], references: [id])
-  archivos  Archivo[]
-  casa      Casa      @relation(fields: [casaId], references: [id])
+  motivo     Motivo    @relation(fields: [motivoId], references: [id])
+  categoria  Categoria @relation(fields: [categoriaId], references: [id])
+  archivos   Archivo[]
+  casa       Casa      @relation(fields: [casaId], references: [id])
+  usuario    Usuario   @relation(fields: [usuarioId], references: [id])
+  historial  TransaccionHistorial[]
+}
+
+model TransaccionHistorial {
+  id              String          @id @default(uuid())
+  transaccionId   String
+  accion          AccionHistorial
+  usuarioId       String
+  fecha           DateTime        @default(now())
+  datosAnteriores Json?
+  datosNuevos     Json?
+
+  transaccion Transaccion @relation(fields: [transaccionId], references: [id])
+  usuario     Usuario     @relation(fields: [usuarioId], references: [id])
+
+  @@index([transaccionId])
 }
 
 model Archivo {

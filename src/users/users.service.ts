@@ -300,7 +300,7 @@ export class UsersService {
       if (!hasAccess) {
         throw new ForbiddenException('No puedes actualizar usuarios de otra casa');
       }
-      if (updateUserDto.eliminado !== undefined && requestingUser.id === id) {
+      if (updateUserDto.puedeEliminar !== undefined && requestingUser.id === id) {
         throw new ForbiddenException('No puedes eliminarte a ti mismo');
       }
     }
@@ -410,6 +410,7 @@ export class UsersService {
         puedeCrear: assignPermisosDto.puedeCrear ?? false,
         puedeEditar: assignPermisosDto.puedeEditar ?? false,
         puedeEliminar: assignPermisosDto.puedeEliminar ?? false,
+        puedeVerTransaccionesOtros: assignPermisosDto.puedeVerTransaccionesOtros ?? false,
       },
       create: {
         usuarioId,
@@ -417,6 +418,7 @@ export class UsersService {
         puedeCrear: assignPermisosDto.puedeCrear ?? false,
         puedeEditar: assignPermisosDto.puedeEditar ?? false,
         puedeEliminar: assignPermisosDto.puedeEliminar ?? false,
+        puedeVerTransaccionesOtros: assignPermisosDto.puedeVerTransaccionesOtros ?? false,
       },
       include: {
         categoria: { select: { id: true, nombre: true } },
