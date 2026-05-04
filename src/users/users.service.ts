@@ -178,7 +178,7 @@ export class UsersService {
 
     // ADMIN can see all users without casaId filter
     if (requestingUser.rol === Rol.ADMIN && !casaId) {
-      return this.prisma.usuario.findMany({
+      const usuarios = await this.prisma.usuario.findMany({
         where: { eliminado: false },
         select: {
           id: true,
@@ -187,17 +187,33 @@ export class UsersService {
           rol: true,
           createdAt: true,
           eliminado: true,
-casas: {
-          include: { casa: { select: { id: true, nombre: true } }, rol: true },
-        },
+          casas: {
+            include: {
+              casa: true,  // Include full casa to avoid recursion
+            },
+          },
           categoriaPermisos: {
-            include: { categoria: { select: { id: true, nombre: true } } },
+            include: {
+              categoria: { select: { id: true, nombre: true } },
+            },
           },
           motivoPermisos: {
-            include: { motivo: { select: { id: true, nombre: true } } },
+            include: {
+              motivo: { select: { id: true, nombre: true } },
+            },
           },
         },
       });
+      
+      // Map to restructure for frontend compatibility
+      return usuarios.map(u => ({
+        ...u,
+        casas: u.casas.map(uc => ({
+          id: uc.id,
+          rol: uc.rol,
+          casa: { id: uc.casa.id, nombre: uc.casa.nombre },
+        })),
+      }));
     }
 
     // MAESTRO_CASA and USUARIO need a valid casaId
