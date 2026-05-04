@@ -5,7 +5,7 @@ import { Transaccion, PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Reportes, TransaccionFilters, PaginationParams, PaginatedResult, Rol } from '../common/types';
 import { PermissionService } from '../auth/services/permission.service';
-import { getUserCasaIdsFromDb, requireMaestroCasaRol } from '../common/auth-helpers';
+import { getUserCasaIdsFromDb, requireMaestroCasaRol, getPerCasaRol, hasFullAccess } from '../common/auth-helpers';
 
 interface AuthUser {
   id: string;
@@ -50,10 +50,17 @@ export class TransaccionesService {
     user: AuthUser,
     casaIds: string[]
   ): Promise<{ categoriaIds: string[]; motivoIds: string[]; canViewOthers: boolean } | null> {
-    // ADMIN y MAESTRO_CASA ven todo
+    // ADMIN global ve todo
     if (user.rol === Rol.ADMIN) return null;
-    if (user.rol === Rol.MAESTRO_CASA) return null;
-    if (user.rol === Rol.USUARIO && (!user.casaIds?.length)) return null;
+
+    // Check per-casa rol: si es MAESTRO_CASA en CUALQUIER casa, ve todo
+    for (const casaId of casaIds) {
+      const perCasaRol = await getPerCasaRol(this.prisma, user, casaId);
+      if (perCasaRol === Rol.MAESTRO_CASA) return null;
+    }
+
+    // Si no tiene casas asignadas, no ve nada
+    if (!user.casaIds?.length) return null;
 
     // Obtener Perfiles asignados al usuario para estas casas
     const usuarioPerfis = await this.prisma.usuarioPerfil.findMany({
@@ -96,6 +103,22 @@ export class TransaccionesService {
       }),
     ]);
 
+    const categoriaIds = categorias.map(c => c.id);
+    const motivoIds = motivos.map(m => m.id);
+
+    // Batch query for individual permisos (instead of one by one in a loop)
+    const [catPermisos, motPermisos] = await Promise.all([
+      this.prisma.usuarioCategoriaPermiso.findMany({
+        where: { usuarioId: user.id, categoriaId: { in: categoriaIds } },
+      }),
+      this.prisma.usuarioMotivoPermiso.findMany({
+        where: { usuarioId: user.id, motivoId: { in: motivoIds } },
+      }),
+    ]);
+
+    const catPermisoMap = new Map(catPermisos.map(cp => [cp.categoriaId, cp]));
+    const motPermisoMap = new Map(motPermisos.map(mp => [mp.motivoId, mp]));
+
     // Verificar permisos para cada categoría
     for (const cat of categorias) {
       const perfilData = perfilPermisosMap.get(cat.casaId);
@@ -110,10 +133,8 @@ export class TransaccionesService {
           }
         }
       } else {
-        // Usar permisos individuales
-        const catPermiso = await this.prisma.usuarioCategoriaPermiso.findUnique({
-          where: { usuarioId_categoriaId: { usuarioId: user.id, categoriaId: cat.id } },
-        });
+        // Usar permisos individuales del map
+        const catPermiso = catPermisoMap.get(cat.id);
 
         if (catPermiso?.puedeVer) {
           visibleCategoriaIds.push(cat.id);
@@ -137,10 +158,8 @@ export class TransaccionesService {
           }
         }
       } else {
-        // Usar permisos individuales
-        const motPermiso = await this.prisma.usuarioMotivoPermiso.findUnique({
-          where: { usuarioId_motivoId: { usuarioId: user.id, motivoId: mot.id } },
-        });
+        // Usar permisos individuales del map
+        const motPermiso = motPermisoMap.get(mot.id);
 
         if (motPermiso?.puedeVer) {
           visibleMotivoIds.push(mot.id);
@@ -160,6 +179,8 @@ export class TransaccionesService {
   }
 
   async create(createTransaccionDto: CreateTransaccionDto, user: AuthUser): Promise<Transaccion> {
+    console.log('[TransaccionesService] create:', { dto: createTransaccionDto, user: { id: user.id, rol: user.rol, casaIds: user.casaIds } });
+    
     let casaIds = user.casaIds || [];
     if (!casaIds.length) {
       casaIds = await this.getCasaIds(user);
@@ -168,23 +189,35 @@ export class TransaccionesService {
       throw new ForbiddenException('No tienes una casa asignada');
     }
 
+    const casaId = createTransaccionDto.casaId || casaIds[0];
+
     // Verify user has permission to create in this categoria/motivo
-    if (user.rol !== Rol.ADMIN) {
+    // Skip if user is ADMIN global OR MAESTRO_CASA per-casa
+    const isFullAccess = await hasFullAccess(this.prisma, user, casaId);
+    if (!isFullAccess) {
+      console.log('[TransaccionesService] Checking permission for user:', user.id, 'categoria:', createTransaccionDto.categoriaId, 'motivo:', createTransaccionDto.motivoId);
       const hasPermission = await this.permissionService.checkPermission(
         user.id,
         createTransaccionDto.categoriaId,
         createTransaccionDto.motivoId,
         'crear',
       );
+      console.log('[TransaccionesService] Permission result:', hasPermission);
       if (!hasPermission) {
         throw new ForbiddenException('No tienes permisos para crear transacciones en esta categoría');
       }
     }
 
-    const casaId = createTransaccionDto.casaId || casaIds[0];
-    if (user.rol !== Rol.ADMIN && !casaIds.includes(casaId)) {
+    console.log('[TransaccionesService] casaId resolved:', casaId, 'user.casaIds:', user.casaIds);
+    if (!isFullAccess && !casaIds.includes(casaId)) {
       throw new ForbiddenException('La casa no te pertenece');
     }
+
+    // Verify categoria belongs to the casa
+    const categoria = await this.prisma.categoria.findUnique({
+      where: { id: createTransaccionDto.categoriaId },
+    });
+    console.log('[TransaccionesService] categoria:', categoria);
 
     try {
       const transaccion = await this.prisma.transaccion.create({
@@ -205,17 +238,20 @@ export class TransaccionesService {
       });
 
       // Registrar historial de creación
+      console.log('[TransaccionesService] Creating historial...');
       await this.prisma.transaccionHistorial.create({
         data: {
           transaccionId: transaccion.id,
           accion: 'CREAR',
           usuarioId: user.id,
-          datosNuevos: transaccion as any,
+          datosNuevos: JSON.parse(JSON.stringify(transaccion)),
         },
       });
+      console.log('[TransaccionesService] Historial created successfully');
 
       return transaccion;
     } catch (error) {
+      console.log('[TransaccionesService] Error creating transaction:', error);
       this.logger.error('Error al crear transacción:', error);
       throw new InternalServerErrorException('Error al crear la transacción');
     }
@@ -300,7 +336,9 @@ export class TransaccionesService {
     }
 
     // Verify user has permission to edit (USUARIO needs specific permission)
-    if (user?.rol !== Rol.ADMIN) {
+    // Skip if user is ADMIN global OR MAESTRO_CASA per-casa
+    const isFullAccess = user ? await hasFullAccess(this.prisma, user, transaccion.casaId) : false;
+    if (!isFullAccess && user) {
       const categoriaId = updateTransaccionDto.categoriaId;
       const motivoId = updateTransaccionDto.motivoId;
 

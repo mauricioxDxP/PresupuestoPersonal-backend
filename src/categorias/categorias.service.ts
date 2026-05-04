@@ -5,7 +5,7 @@ import { Categoria } from '@prisma/client';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Rol } from '../common/types';
-import { getPerCasaRol, getUserCasaIdsFromDb, requireMaestroCasaRol } from '../common/auth-helpers';
+import { getPerCasaRol, getUserCasaIdsFromDb, requireMaestroCasaRol, hasFullAccess } from '../common/auth-helpers';
 
 interface AuthUser {
   id: string;
@@ -49,7 +49,8 @@ export class CategoriasService {
     }
 
     const casaId = createCategoriaDto.casaId || casaIds[0];
-    if (user.rol !== Rol.ADMIN && !casaIds.includes(casaId)) {
+    const isFullAccess = await hasFullAccess(this.prisma, user, casaId);
+    if (!isFullAccess && !casaIds.includes(casaId)) {
       throw new ForbiddenException('La casa no te pertenece');
     }
 

@@ -187,9 +187,9 @@ export class UsersService {
           rol: true,
           createdAt: true,
           eliminado: true,
-          casas: {
-            include: { casa: { select: { id: true, nombre: true } } },
-          },
+casas: {
+          include: { casa: { select: { id: true, nombre: true } }, rol: true },
+        },
           categoriaPermisos: {
             include: { categoria: { select: { id: true, nombre: true } } },
           },
@@ -687,9 +687,11 @@ async getMyPermisos(userId: string, authUser: AuthUser, xCasaIdHeader?: string |
     }
 
     return {
-      rol: user.rol,
+      rol: casaIdFilter 
+        ? (user.casas.find(uc => uc.casaId === casaIdFilter)?.rol || user.rol)
+        : user.rol,
       casaIds: user.casas.map(uc => uc.casaId),
-      casas: user.casas.map(uc => ({ id: uc.casa.id, nombre: uc.casa.nombre })),
+      casas: user.casas.map(uc => ({ id: uc.casa.id, nombre: uc.casa.nombre, rol: uc.rol })),
       categoriaPermisos,
       motivoPermisos,
     };

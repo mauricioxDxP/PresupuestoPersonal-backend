@@ -4,7 +4,7 @@ import { UpdateMotivoDto } from './dto/update-motivo.dto';
 import { Motivo, PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { ReorderItem, Rol } from '../common/types';
-import { getPerCasaRol, getUserCasaIdsFromDb, requireMaestroCasaRol } from '../common/auth-helpers';
+import { getPerCasaRol, getUserCasaIdsFromDb, requireMaestroCasaRol, hasFullAccess } from '../common/auth-helpers';
 
 interface AuthUser {
   id: string;
@@ -48,12 +48,13 @@ export class MotivosService {
     }
 
     const casaId = createMotivoDto.casaId || casaIds[0];
-    if (user.rol !== Rol.ADMIN && !casaIds.includes(casaId)) {
+    const isFullAccess = await hasFullAccess(this.prisma, user, casaId);
+    if (!isFullAccess && !casaIds.includes(casaId)) {
       throw new ForbiddenException('La casa no te pertenece');
     }
 
     // Verify categoria belongs to user's casa
-    if (user.rol !== Rol.ADMIN) {
+    if (!isFullAccess) {
       const categoria = await this.prisma.categoria.findUnique({
         where: { id: createMotivoDto.categoriaId },
       });

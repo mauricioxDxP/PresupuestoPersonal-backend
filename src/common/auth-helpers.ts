@@ -71,6 +71,33 @@ export async function hasCasaAccess(
 }
 
 /**
+ * Verifica si el usuario tiene acceso total (ADMIN global o MAESTRO_CASA por casa).
+ * Si se pasa casaId, verifica para esa casa específica.
+ * Si no se pasa casaId, verifica si tiene MAESTRO_CASA en alguna de sus casas.
+ */
+export async function hasFullAccess(
+  prisma: PrismaClient,
+  user: AuthUser,
+  casaId?: string,
+): Promise<boolean> {
+  // ADMIN global tiene acceso total
+  if (user.rol === Rol.ADMIN) return true;
+
+  if (casaId) {
+    // Verificar para una casa específica
+    const rol = await getPerCasaRol(prisma, user, casaId);
+    return rol === Rol.MAESTRO_CASA;
+  } else {
+    // Verificar si tiene MAESTRO_CASA en alguna de sus casas
+    for (const cid of user.casaIds) {
+      const rol = await getPerCasaRol(prisma, user, cid);
+      if (rol === Rol.MAESTRO_CASA) return true;
+    }
+    return false;
+  }
+}
+
+/**
  * Obtiene todas las casas donde el usuario tiene acceso basado en UsuarioCasa.
  * Para ADMIN global retorna array vacío (significa "todas").
  */
