@@ -11,7 +11,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
-import { CreateUserDto, UpdateUserDto, AssignPermisosDto, AssignMotivoPermisosDto, AssignCasaDto } from './dto/users.dto';
+import { CreateUserDto, UpdateUserDto, AssignPermisosDto, AssignMotivoPermisosDto, AssignCasaDto, AssignPerfilDto } from './dto/users.dto';
 import { JwtAuthGuard } from '../auth/guards/auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -36,6 +36,11 @@ export class UsersController {
   @Get('me/permisos')
   getMyPermisos(@Request() req: any) {
     return this.usersService.getMyPermisos(req.user.id, req.user, req.headers['x-casa-id']);
+  }
+
+  @Get('me/perfil')
+  getMyPerfil(@Request() req: any, @Query('casaId') casaId: string) {
+    return this.usersService.getUserPerfil(req.user.id, casaId, req.user);
   }
 
   @Get(':id')
@@ -98,5 +103,35 @@ export class UsersController {
     @Request() req: any,
   ) {
     return this.usersService.removeCasa(usuarioId, casaId, req.user);
+  }
+
+  // Profile (Perfil de Permisos) management
+  @Post(':usuarioId/perfil')
+  @Roles(Rol.MAESTRO_CASA, Rol.ADMIN)
+  assignPerfil(
+    @Param('usuarioId') usuarioId: string,
+    @Body() assignPerfilDto: AssignPerfilDto,
+    @Request() req: any,
+  ) {
+    return this.usersService.assignPerfil(usuarioId, assignPerfilDto.perfilId, assignPerfilDto.casaId, req.user);
+  }
+
+  @Get(':usuarioId/perfil')
+  getUserPerfil(
+    @Param('usuarioId') usuarioId: string,
+    @Query('casaId') casaId: string,
+    @Request() req: any,
+  ) {
+    return this.usersService.getUserPerfil(usuarioId, casaId, req.user);
+  }
+
+  @Delete(':usuarioId/perfil')
+  @Roles(Rol.MAESTRO_CASA, Rol.ADMIN)
+  removePerfil(
+    @Param('usuarioId') usuarioId: string,
+    @Query('casaId') casaId: string,
+    @Request() req: any,
+  ) {
+    return this.usersService.removePerfil(usuarioId, casaId, req.user);
   }
 }

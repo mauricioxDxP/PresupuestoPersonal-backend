@@ -30,6 +30,7 @@ model Casa {
   motivos           Motivo[]
   transacciones     Transaccion[]
   archivos          Archivo[]
+  perfiles          Perfil[]
 }
 
 model UsuarioCasa {
@@ -66,6 +67,68 @@ model Usuario {
   motivoPermisos     UsuarioMotivoPermiso[]
   transacciones      Transaccion[]
   historialTransacciones TransaccionHistorial[]
+  perfilUsuario      UsuarioPerfil[]
+}
+
+model Perfil {
+  id          String   @id @default(uuid())
+  nombre      String
+  descripcion String?
+  casaId      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  casa              Casa                     @relation(fields: [casaId], references: [id], onDelete: Cascade)
+  categoriaPermisos PerfilCategoriaPermiso[]
+  motivoPermisos    PerfilMotivoPermiso[]
+  usuarios          UsuarioPerfil[]
+
+  @@unique([nombre, casaId])
+}
+
+model UsuarioPerfil {
+  id        String   @id @default(uuid())
+  usuarioId String
+  perfilId  String
+  casaId    String
+  createdAt DateTime @default(now())
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  perfil  Perfil  @relation(fields: [perfilId], references: [id], onDelete: Cascade)
+
+  @@unique([usuarioId, casaId])
+}
+
+model PerfilCategoriaPermiso {
+  id                      String   @id @default(uuid())
+  perfilId                String
+  categoriaId             String
+  puedeCrear              Boolean  @default(false)
+  puedeEditar             Boolean  @default(false)
+  puedeEliminar           Boolean  @default(false)
+  puedeVer                Boolean  @default(false)
+  puedeVerTransaccionesOtros Boolean @default(false)
+
+  perfil    Perfil    @relation(fields: [perfilId], references: [id], onDelete: Cascade)
+  categoria Categoria @relation(fields: [categoriaId], references: [id])
+
+  @@unique([perfilId, categoriaId])
+}
+
+model PerfilMotivoPermiso {
+  id            String   @id @default(uuid())
+  perfilId      String
+  motivoId      String
+  puedeCrear    Boolean  @default(false)
+  puedeEditar   Boolean  @default(false)
+  puedeEliminar Boolean  @default(false)
+  puedeVer      Boolean  @default(false)
+  puedeVerTransaccionesOtros Boolean @default(false)
+
+  perfil Perfil  @relation(fields: [perfilId], references: [id], onDelete: Cascade)
+  motivo Motivo  @relation(fields: [motivoId], references: [id])
+
+  @@unique([perfilId, motivoId])
 }
 
 model UsuarioCategoriaPermiso {
@@ -75,6 +138,7 @@ model UsuarioCategoriaPermiso {
   puedeCrear              Boolean  @default(false)
   puedeEditar             Boolean  @default(false)
   puedeEliminar           Boolean  @default(false)
+  puedeVer                Boolean  @default(false)
   puedeVerTransaccionesOtros Boolean @default(false)
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
@@ -92,6 +156,8 @@ model UsuarioMotivoPermiso {
   puedeCrear    Boolean  @default(false)
   puedeEditar   Boolean  @default(false)
   puedeEliminar Boolean  @default(false)
+  puedeVer      Boolean  @default(false)
+  puedeVerTransaccionesOtros Boolean @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -116,6 +182,7 @@ model Categoria {
   motivos                Motivo[]
   transacciones          Transaccion[]
   categoriaPermisos      UsuarioCategoriaPermiso[]
+  perfilPermisos          PerfilCategoriaPermiso[]
 }
 
 model Motivo {
@@ -134,6 +201,7 @@ model Motivo {
   transacciones         Transaccion[]
   casa                  Casa                   @relation(fields: [casaId], references: [id])
   motivoPermisos        UsuarioMotivoPermiso[]
+  perfilPermisos        PerfilMotivoPermiso[]
 }
 
 enum AccionHistorial {

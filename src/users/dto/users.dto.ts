@@ -45,6 +45,10 @@ export class AssignPermisosDto {
 
   @IsBoolean()
   @IsOptional()
+  puedeVer?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
   puedeVerTransaccionesOtros?: boolean;
 }
 
@@ -63,6 +67,14 @@ export class AssignMotivoPermisosDto {
   @IsBoolean()
   @IsOptional()
   puedeEliminar?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  puedeVer?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  puedeVerTransaccionesOtros?: boolean;
 }
 
 export class AssignCasaDto {
@@ -72,4 +84,12 @@ export class AssignCasaDto {
   @IsString()
   @IsOptional()
   rol?: Rol;
+}
+
+export class AssignPerfilDto {
+  @IsUUID()
+  perfilId: string;
+
+  @IsUUID()
+  casaId: string;
 }

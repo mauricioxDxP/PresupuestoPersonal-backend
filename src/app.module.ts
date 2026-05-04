@@ -8,6 +8,7 @@ import { ArchivosModule } from './archivos/archivos.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { CasaModule } from './casa/casa.module';
+import { PerfisModule } from './perfis/perfis.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { CasaModule } from './casa/casa.module';
     MotivosModule,
     TransaccionesModule,
     ArchivosModule,
+    PerfisModule,
   ],
 })
 export class AppModule {}

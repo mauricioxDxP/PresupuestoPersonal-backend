@@ -41,6 +41,124 @@ export class TransaccionesService {
     return { casaId: { in: casaIds } };
   }
 
+  /**
+   * Obtiene los IDs de categorías y motivos que el USUARIO puede ver
+   * Retorna null si el usuario es ADMIN o MAESTRO_CASA (puede ver todo)
+   * Considera Perfil de permisos primero, luego permisos individuales
+   */
+  private async getVisibleCategoriaMotivoIds(
+    user: AuthUser,
+    casaIds: string[]
+  ): Promise<{ categoriaIds: string[]; motivoIds: string[]; canViewOthers: boolean } | null> {
+    // ADMIN y MAESTRO_CASA ven todo
+    if (user.rol === Rol.ADMIN) return null;
+    if (user.rol === Rol.MAESTRO_CASA) return null;
+    if (user.rol === Rol.USUARIO && (!user.casaIds?.length)) return null;
+
+    // Obtener Perfiles asignados al usuario para estas casas
+    const usuarioPerfis = await this.prisma.usuarioPerfil.findMany({
+      where: { usuarioId: user.id, casaId: { in: casaIds } },
+      include: {
+        perfil: {
+          include: {
+            categoriaPermisos: true,
+            motivoPermisos: true,
+          },
+        },
+      },
+    });
+
+    // Map of casaId -> perfil permisos
+    const perfilPermisosMap = new Map<string, { categoriaIds: Set<string>; motivoIds: Set<string>; canViewOthers: boolean }>();
+    for (const up of usuarioPerfis) {
+      const perfil = up.perfil;
+      const categoriaIds = new Set(perfil.categoriaPermisos.filter(cp => cp.puedeVer).map(cp => cp.categoriaId));
+      const motivoIds = new Set(perfil.motivoPermisos.filter(mp => mp.puedeVer).map(mp => mp.motivoId));
+      const canViewOthers = perfil.categoriaPermisos.every(cp => cp.puedeVerTransaccionesOtros) &&
+                           perfil.motivoPermisos.every(mp => mp.puedeVerTransaccionesOtros);
+      perfilPermisosMap.set(up.casaId, { categoriaIds, motivoIds, canViewOthers });
+    }
+
+    const visibleCategoriaIds: string[] = [];
+    const visibleMotivoIds: string[] = [];
+    let canViewOthers = true;
+    let hasAnyPerfil = false;
+
+    // Obtener todas las categorías y motivos de las casas del usuario
+    const [categorias, motivos] = await Promise.all([
+      this.prisma.categoria.findMany({
+        where: { casaId: { in: casaIds }, eliminado: false },
+        select: { id: true, casaId: true },
+      }),
+      this.prisma.motivo.findMany({
+        where: { casaId: { in: casaIds }, eliminado: false },
+        select: { id: true, categoriaId: true, casaId: true },
+      }),
+    ]);
+
+    // Verificar permisos para cada categoría
+    for (const cat of categorias) {
+      const perfilData = perfilPermisosMap.get(cat.casaId);
+
+      if (perfilData) {
+        // Usar permisos del Perfil
+        hasAnyPerfil = true;
+        if (perfilData.categoriaIds.has(cat.id)) {
+          visibleCategoriaIds.push(cat.id);
+          if (!perfilData.canViewOthers) {
+            canViewOthers = false;
+          }
+        }
+      } else {
+        // Usar permisos individuales
+        const catPermiso = await this.prisma.usuarioCategoriaPermiso.findUnique({
+          where: { usuarioId_categoriaId: { usuarioId: user.id, categoriaId: cat.id } },
+        });
+
+        if (catPermiso?.puedeVer) {
+          visibleCategoriaIds.push(cat.id);
+          if (!catPermiso.puedeVerTransaccionesOtros) {
+            canViewOthers = false;
+          }
+        }
+      }
+    }
+
+    // Verificar permisos para cada motivo
+    for (const mot of motivos) {
+      const perfilData = perfilPermisosMap.get(mot.casaId);
+
+      if (perfilData) {
+        // Usar permisos del Perfil
+        if (perfilData.motivoIds.has(mot.id)) {
+          visibleMotivoIds.push(mot.id);
+          if (!perfilData.canViewOthers) {
+            canViewOthers = false;
+          }
+        }
+      } else {
+        // Usar permisos individuales
+        const motPermiso = await this.prisma.usuarioMotivoPermiso.findUnique({
+          where: { usuarioId_motivoId: { usuarioId: user.id, motivoId: mot.id } },
+        });
+
+        if (motPermiso?.puedeVer) {
+          visibleMotivoIds.push(mot.id);
+          if (!motPermiso.puedeVerTransaccionesOtros) {
+            canViewOthers = false;
+          }
+        }
+      }
+    }
+
+    // If user has at least one perfil but no visibility found, they see nothing from that casa
+    if (hasAnyPerfil && visibleCategoriaIds.length === 0 && visibleMotivoIds.length === 0) {
+      return { categoriaIds: [], motivoIds: [], canViewOthers: false };
+    }
+
+    return { categoriaIds: visibleCategoriaIds, motivoIds: visibleMotivoIds, canViewOthers };
+  }
+
   async create(createTransaccionDto: CreateTransaccionDto, user: AuthUser): Promise<Transaccion> {
     let casaIds = user.casaIds || [];
     if (!casaIds.length) {
@@ -340,11 +458,28 @@ export class TransaccionesService {
     const fechaInicio = new Date(Date.UTC(anio, mes - 1, 1, 0, 0, 0, 0));
     const fechaFin = new Date(Date.UTC(anio, mes, 0, 23, 59, 59, 999));
 
+    // Aplicar filtro de visibilidad para USUARIO
+    let visibilidadFilter: any = {};
+    if (user?.rol === Rol.USUARIO) {
+      const casaIds = user.casaIds?.length ? user.casaIds : await this.getCasaIds(user);
+      if (casaIds.length) {
+        const visibility = await this.getVisibleCategoriaMotivoIds(user, casaIds);
+        if (visibility) {
+          visibilidadFilter.categoriaId = { in: visibility.categoriaIds };
+          visibilidadFilter.motivoId = { in: visibility.motivoIds };
+          if (!visibility.canViewOthers) {
+            visibilidadFilter.usuarioId = user.id;
+          }
+        }
+      }
+    }
+
     const transacciones = await this.prisma.transaccion.findMany({
       where: {
         eliminado: false,
         ...casaFilter,
         ...casaIdFilter,
+        ...visibilidadFilter,
         fecha: {
           gte: fechaInicio,
           lte: fechaFin,
@@ -362,13 +497,27 @@ export class TransaccionesService {
       ],
     });
 
+    // Filtrar categorías y motivos visibles para el usuario
+    let categoriasFilter: any = {};
+    let motivosFilter: any = {};
+    if (user?.rol === Rol.USUARIO) {
+      const casaIds = user.casaIds?.length ? user.casaIds : await this.getCasaIds(user);
+      if (casaIds.length) {
+        const visibility = await this.getVisibleCategoriaMotivoIds(user, casaIds);
+        if (visibility) {
+          categoriasFilter = { id: { in: visibility.categoriaIds } };
+          motivosFilter = { id: { in: visibility.motivoIds } };
+        }
+      }
+    }
+
     const [categorias, motivos] = await Promise.all([
       this.prisma.categoria.findMany({
-        where: { eliminado: false, ...casaFilter, ...casaIdFilter },
+        where: { eliminado: false, ...casaFilter, ...casaIdFilter, ...categoriasFilter },
         orderBy: { orden: 'asc' },
       }),
       this.prisma.motivo.findMany({
-        where: { eliminado: false, ...casaFilter, ...casaIdFilter },
+        where: { eliminado: false, ...casaFilter, ...casaIdFilter, ...motivosFilter },
         orderBy: [{ categoriaId: 'asc' }, { orden: 'asc' }],
       }),
     ]);
@@ -392,6 +541,22 @@ export class TransaccionesService {
 
     if (xCasaId && user?.rol !== Rol.ADMIN) {
       where.casaId = xCasaId;
+    }
+
+    // Aplicar filtro de visibilidad para USUARIO
+    if (user?.rol === Rol.USUARIO) {
+      const casaIds = user.casaIds?.length ? user.casaIds : await this.getCasaIds(user);
+      if (casaIds.length) {
+        const visibility = await this.getVisibleCategoriaMotivoIds(user, casaIds);
+        if (visibility) {
+          where.categoriaId = { in: visibility.categoriaIds };
+          where.motivoId = { in: visibility.motivoIds };
+          // Si no puede ver transacciones de otros, filtrar por usuario
+          if (!visibility.canViewOthers) {
+            where.usuarioId = user.id;
+          }
+        }
+      }
     }
 
     if (!filtros) return where;

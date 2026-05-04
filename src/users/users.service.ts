@@ -410,6 +410,7 @@ export class UsersService {
         puedeCrear: assignPermisosDto.puedeCrear ?? false,
         puedeEditar: assignPermisosDto.puedeEditar ?? false,
         puedeEliminar: assignPermisosDto.puedeEliminar ?? false,
+        puedeVer: assignPermisosDto.puedeVer ?? false,
         puedeVerTransaccionesOtros: assignPermisosDto.puedeVerTransaccionesOtros ?? false,
       },
       create: {
@@ -418,12 +419,167 @@ export class UsersService {
         puedeCrear: assignPermisosDto.puedeCrear ?? false,
         puedeEditar: assignPermisosDto.puedeEditar ?? false,
         puedeEliminar: assignPermisosDto.puedeEliminar ?? false,
+        puedeVer: assignPermisosDto.puedeVer ?? false,
         puedeVerTransaccionesOtros: assignPermisosDto.puedeVerTransaccionesOtros ?? false,
       },
       include: {
         categoria: { select: { id: true, nombre: true } },
       },
     });
+  }
+
+  /**
+   * Assign a permission profile to a user for a specific casa
+   */
+  async assignPerfil(
+    usuarioId: string,
+    perfilId: string,
+    casaId: string,
+    requestingUser: AuthUser,
+  ) {
+    if (requestingUser.rol !== Rol.MAESTRO_CASA && requestingUser.rol !== Rol.ADMIN) {
+      throw new ForbiddenException('Solo el usuario maestro puede asignar perfiles');
+    }
+
+    const usuario = await this.prisma.usuario.findUnique({
+      where: { id: usuarioId, eliminado: false },
+    });
+
+    if (!usuario) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    // Verify the target user belongs to the requesting user's casas
+    const usuarioCasas = await this.prisma.usuarioCasa.findMany({
+      where: { usuarioId },
+    });
+    const usuarioCasaIds = usuarioCasas.map(uc => uc.casaId);
+    const hasAccess = requestingUser.rol === Rol.ADMIN || 
+      (usuarioCasaIds.includes(casaId) && requestingUser.casaIds.includes(casaId));
+    if (!hasAccess) {
+      throw new ForbiddenException('No puedes asignar perfiles a usuarios de otra casa');
+    }
+
+    // Verify perfil exists and belongs to the same casa
+    const perfil = await this.prisma.perfil.findUnique({
+      where: { id: perfilId },
+    });
+
+    if (!perfil) {
+      throw new NotFoundException('Perfil no encontrado');
+    }
+
+    if (perfil.casaId !== casaId) {
+      throw new ForbiddenException('El perfil no pertenece a esta casa');
+    }
+
+    if (requestingUser.rol !== Rol.ADMIN && !requestingUser.casaIds.includes(casaId)) {
+      throw new ForbiddenException('No tienes acceso a esta casa');
+    }
+
+    // Check if user already has a perfil for this casa
+    const existing = await this.prisma.usuarioPerfil.findFirst({
+      where: { usuarioId, casaId },
+    });
+
+    if (existing) {
+      // Update existing
+      return this.prisma.usuarioPerfil.update({
+        where: { id: existing.id },
+        data: { perfilId },
+        include: {
+          perfil: {
+            include: {
+              categoriaPermisos: { include: { categoria: true } },
+              motivoPermisos: { include: { motivo: true } },
+            },
+          },
+          casa: { select: { id: true, nombre: true } },
+        },
+      });
+    }
+
+    // Create new
+    return this.prisma.usuarioPerfil.create({
+      data: { usuarioId, perfilId, casaId },
+      include: {
+        perfil: {
+          include: {
+            categoriaPermisos: { include: { categoria: true } },
+            motivoPermisos: { include: { motivo: true } },
+          },
+        },
+        casa: { select: { id: true, nombre: true } },
+      },
+    });
+  }
+
+  /**
+   * Remove a permission profile from a user for a specific casa
+   */
+  async removePerfil(
+    usuarioId: string,
+    casaId: string,
+    requestingUser: AuthUser,
+  ) {
+    if (requestingUser.rol !== Rol.MAESTRO_CASA && requestingUser.rol !== Rol.ADMIN) {
+      throw new ForbiddenException('Solo el usuario maestro puede remover perfiles');
+    }
+
+    const usuarioPerfil = await this.prisma.usuarioPerfil.findFirst({
+      where: { usuarioId, casaId },
+    });
+
+    if (!usuarioPerfil) {
+      throw new NotFoundException('El usuario no tiene un perfil asignado en esta casa');
+    }
+
+    if (requestingUser.rol !== Rol.ADMIN && !requestingUser.casaIds.includes(casaId)) {
+      throw new ForbiddenException('No tienes acceso a esta casa');
+    }
+
+    await this.prisma.usuarioPerfil.delete({
+      where: { id: usuarioPerfil.id },
+    });
+
+    return { success: true };
+  }
+
+  /**
+   * Get the permission profile assigned to a user for a specific casa
+   */
+  async getUserPerfil(
+    usuarioId: string,
+    casaId: string,
+    requestingUser: AuthUser,
+  ) {
+    // Any authenticated user can see another user's perfil if they have access
+    if (requestingUser.rol === Rol.USUARIO && requestingUser.id !== usuarioId) {
+      throw new ForbiddenException('No tienes permisos para ver este perfil');
+    }
+
+    if (requestingUser.rol === Rol.MAESTRO_CASA && !requestingUser.casaIds.includes(casaId)) {
+      throw new ForbiddenException('No tienes acceso a esta casa');
+    }
+
+    const usuarioPerfil = await this.prisma.usuarioPerfil.findFirst({
+      where: { usuarioId, casaId },
+      include: {
+        perfil: {
+          include: {
+            categoriaPermisos: {
+              include: { categoria: { select: { id: true, nombre: true, tipo: true } } },
+            },
+            motivoPermisos: {
+              include: { motivo: { select: { id: true, nombre: true, categoriaId: true } } },
+            },
+          },
+        },
+        casa: { select: { id: true, nombre: true } },
+      },
+    });
+
+    return usuarioPerfil;
   }
 
   async assignMotivoPermiso(
@@ -478,6 +634,8 @@ export class UsersService {
         puedeCrear: assignMotivoPermisosDto.puedeCrear ?? false,
         puedeEditar: assignMotivoPermisosDto.puedeEditar ?? false,
         puedeEliminar: assignMotivoPermisosDto.puedeEliminar ?? false,
+        puedeVer: assignMotivoPermisosDto.puedeVer ?? false,
+        puedeVerTransaccionesOtros: assignMotivoPermisosDto.puedeVerTransaccionesOtros ?? false,
       },
       create: {
         usuarioId,
@@ -485,6 +643,8 @@ export class UsersService {
         puedeCrear: assignMotivoPermisosDto.puedeCrear ?? false,
         puedeEditar: assignMotivoPermisosDto.puedeEditar ?? false,
         puedeEliminar: assignMotivoPermisosDto.puedeEliminar ?? false,
+        puedeVer: assignMotivoPermisosDto.puedeVer ?? false,
+        puedeVerTransaccionesOtros: assignMotivoPermisosDto.puedeVerTransaccionesOtros ?? false,
       },
       include: {
         motivo: { select: { id: true, nombre: true } },
