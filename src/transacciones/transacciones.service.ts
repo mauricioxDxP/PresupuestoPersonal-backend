@@ -222,8 +222,12 @@ export class TransaccionesService {
     try {
       const transaccion = await this.prisma.transaccion.create({
         data: {
-          ...createTransaccionDto,
+          motivoId: createTransaccionDto.motivoId,
+          categoriaId: createTransaccionDto.categoriaId,
+          monto: createTransaccionDto.monto || 0,
           fecha: new Date(createTransaccionDto.fecha),
+          descripcion: createTransaccionDto.descripcion,
+          facturable: createTransaccionDto.facturable ?? false,
           casaId,
           usuarioId: user.id,
         },
@@ -419,7 +423,23 @@ export class TransaccionesService {
       throw new NotFoundException(`Transacción ${id} no encontrada`);
     }
 
-    await requireMaestroCasaRol(this.prisma, user!, transaccion.casaId, 'eliminar transacciones');
+    // Verify user has permission to delete (USUARIO needs specific permission)
+    // Skip if user is ADMIN global OR MAESTRO_CASA per-casa
+    const isFullAccess = user ? await hasFullAccess(this.prisma, user, transaccion.casaId) : false;
+    if (!isFullAccess && user) {
+      const categoriaId = transaccion.categoriaId;
+      const motivoId = transaccion.motivoId;
+
+      const hasPermission = await this.permissionService.checkPermission(
+        user.id,
+        categoriaId,
+        motivoId,
+        'eliminar',
+      );
+      if (!hasPermission) {
+        throw new ForbiddenException('No tienes permisos para eliminar esta transacción');
+      }
+    }
 
     const deleted = await this.prisma.transaccion.update({
       where: { id },

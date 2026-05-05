@@ -8,7 +8,8 @@ export class CreateTransaccionDto {
   categoriaId: string;
 
   @IsNumber()
-  monto: number;
+  @IsOptional()
+  monto?: number;
 
   @IsDateString()
   fecha: string;
