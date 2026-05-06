@@ -55,8 +55,23 @@ export class AuthService {
       nombre: user.nombre,
     };
 
+    const access_token = this.jwtService.sign(payload, {
+      expiresIn: '15m',
+    });
+
+    const refreshToken = this.jwtService.sign(payload, {
+      expiresIn: '7d',
+    });
+
+    // Save refresh token hash in DB
+    await this.prisma.usuario.update({
+      where: { id: user.id },
+      data: { refreshToken },
+    });
+
     return {
-      access_token: this.jwtService.sign(payload),
+      access_token,
+      refresh_token: refreshToken,
       user: {
         id: user.id,
         email: user.email,
@@ -147,8 +162,22 @@ export class AuthService {
         nombre: user.nombre,
       };
 
+      const access_token = this.jwtService.sign(payload, {
+        expiresIn: '15m',
+      });
+
+      const refreshToken = this.jwtService.sign(payload, {
+        expiresIn: '7d',
+      });
+
+      await this.prisma.usuario.update({
+        where: { id: user.id },
+        data: { refreshToken },
+      });
+
       return {
-        access_token: this.jwtService.sign(payload),
+        access_token,
+        refresh_token: refreshToken,
         user: {
           id: user.id,
           email: user.email,
@@ -204,8 +233,23 @@ export class AuthService {
       nombre: user.nombre,
     };
 
+    const access_token = this.jwtService.sign(payload, {
+      expiresIn: '15m',
+    });
+
+    const refreshToken = this.jwtService.sign(payload, {
+      expiresIn: '7d',
+    });
+
+    // Guardar refresh token para nuevos usuarios Google
+    await this.prisma.usuario.update({
+      where: { id: user.id },
+      data: { refreshToken },
+    });
+
     return {
-      access_token: this.jwtService.sign(payload),
+      access_token,
+      refresh_token: refreshToken,
       user: {
         id: user.id,
         email: user.email,
@@ -218,6 +262,55 @@ export class AuthService {
         })),
       },
     };
+  }
+
+  async refreshToken(refreshToken: string) {
+    try {
+      const payload = this.jwtService.verify(refreshToken);
+
+      const user = await this.prisma.usuario.findUnique({
+        where: { id: payload.sub, eliminado: false },
+        include: {
+          casas: {
+            include: { casa: true },
+          },
+        },
+      });
+
+      if (!user || user.refreshToken !== refreshToken) {
+        throw new UnauthorizedException('Refresh token inválido');
+      }
+
+      const casaIds = user.casas.map(uc => uc.casaId);
+      const newPayload: JwtPayload = {
+        sub: user.id,
+        email: user.email,
+        rol: user.rol as Rol,
+        casaIds,
+        nombre: user.nombre,
+      };
+
+      const newAccessToken = this.jwtService.sign(newPayload, {
+        expiresIn: '15m',
+      });
+
+      const newRefreshToken = this.jwtService.sign(newPayload, {
+        expiresIn: '7d',
+      });
+
+      // Update refresh token in DB
+      await this.prisma.usuario.update({
+        where: { id: user.id },
+        data: { refreshToken: newRefreshToken },
+      });
+
+      return {
+        access_token: newAccessToken,
+        refresh_token: newRefreshToken,
+      };
+    } catch (error) {
+      throw new UnauthorizedException('Refresh token inválido o expirado');
+    }
   }
 
   private async verifyGoogleToken(token: string): Promise<any> {

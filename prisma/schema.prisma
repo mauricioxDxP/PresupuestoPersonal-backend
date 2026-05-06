@@ -59,6 +59,9 @@ model Usuario {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  // Refresh token for token renewal
+  refreshToken String?
+
   // New relation for multi-casa
   casas              UsuarioCasa[]
   // Old relation kept for backwards compatibility during migration
