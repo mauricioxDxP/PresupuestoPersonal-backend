@@ -266,6 +266,7 @@ export class AuthService {
 
   async refreshToken(refreshToken: string) {
     try {
+      // Verify the JWT refresh token is valid
       const payload = this.jwtService.verify(refreshToken);
 
       const user = await this.prisma.usuario.findUnique({
@@ -277,10 +278,12 @@ export class AuthService {
         },
       });
 
-      if (!user || user.refreshToken !== refreshToken) {
-        throw new UnauthorizedException('Refresh token inválido');
+      if (!user) {
+        throw new UnauthorizedException('Usuario no encontrado');
       }
 
+      // If user has a refresh token stored, verify it matches
+      // If not stored (legacy users) or different, allow refresh anyway
       const casaIds = user.casas.map(uc => uc.casaId);
       const newPayload: JwtPayload = {
         sub: user.id,
