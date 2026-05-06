@@ -220,11 +220,15 @@ export class TransaccionesService {
     console.log('[TransaccionesService] categoria:', categoria);
 
     try {
+      const monto = createTransaccionDto.monto
+        ? parseFloat(createTransaccionDto.monto)
+        : 0;
+      
       const transaccion = await this.prisma.transaccion.create({
         data: {
           motivoId: createTransaccionDto.motivoId,
           categoriaId: createTransaccionDto.categoriaId,
-          monto: createTransaccionDto.monto || 0,
+          monto: isNaN(monto) ? 0 : monto,
           fecha: new Date(createTransaccionDto.fecha),
           descripcion: createTransaccionDto.descripcion,
           facturable: createTransaccionDto.facturable ?? false,
@@ -362,6 +366,10 @@ export class TransaccionesService {
     const data: any = { ...updateTransaccionDto };
     if (updateTransaccionDto.fecha) {
       data.fecha = new Date(updateTransaccionDto.fecha);
+    }
+    if (updateTransaccionDto.monto) {
+      const montoNum = parseFloat(String(updateTransaccionDto.monto));
+      data.monto = isNaN(montoNum) ? 0 : montoNum;
     }
 
     try {

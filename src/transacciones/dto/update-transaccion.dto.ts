@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsBoolean, IsNumber, IsUUID, IsDateString } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsNumber, IsUUID, IsDateString, IsNumberString } from 'class-validator';
 
 export class UpdateTransaccionDto {
   @IsUUID()
@@ -9,9 +9,9 @@ export class UpdateTransaccionDto {
   @IsOptional()
   categoriaId?: string;
 
-  @IsNumber()
+  @IsNumberString()
   @IsOptional()
-  monto?: number;
+  monto?: string;
 
   @IsDateString()
   @IsOptional()
