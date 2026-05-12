@@ -1,13 +1,18 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, Request, Res } from '@nestjs/common';
 import { TransaccionesService } from './transacciones.service';
+import { ReportesService } from '../reportes/reportes.service';
 import { CreateTransaccionDto } from './dto/create-transaccion.dto';
 import { UpdateTransaccionDto } from './dto/update-transaccion.dto';
 import { JwtAuthGuard } from '../auth/guards/auth.guard';
+import { Response } from 'express';
 
 @Controller('transacciones')
 @UseGuards(JwtAuthGuard)
 export class TransaccionesController {
-  constructor(private readonly transaccionesService: TransaccionesService) {}
+  constructor(
+    private readonly transaccionesService: TransaccionesService,
+    private readonly reportesService: ReportesService,
+  ) {}
 
   @Post()
   create(@Body() createTransaccionDto: CreateTransaccionDto, @Request() req: any) {
@@ -49,7 +54,54 @@ export class TransaccionesController {
     );
   }
 
-@Get('reporte-mensual')
+@Get('reporte-mensual/excel/:formato')
+  async getReporteMensualExcel(
+    @Param('formato') formato: 'mensual' | 'semanal',
+    @Query('anio') anio: string,
+    @Query('mes') mes: string,
+    @Request() req: any,
+    @Res() res: Response,
+  ) {
+    const xCasaId = req?.headers?.['x-casa-id'];
+    const includeEmpty = req?.query?.includeEmpty === 'true';
+
+    const data = await this.transaccionesService.getReporteMensual(
+      parseInt(anio),
+      parseInt(mes),
+      req?.user,
+      xCasaId,
+    );
+
+    let buffer: Buffer;
+    let filename: string;
+
+    if (formato === 'semanal') {
+      // Transformar transacciones para que monto sea number|string y fecha sea string
+      const transaccionesTransformadas = data.transacciones.map((t: any) => ({
+        ...t,
+        monto: Number(t.monto),
+        fecha: t.fecha instanceof Date ? t.fecha.toISOString() : String(t.fecha),
+      }));
+      buffer = await this.reportesService.generateReporteTwo(
+        transaccionesTransformadas,
+        data.categorias,
+        data.motivos,
+        data.nombreMes,
+        includeEmpty,
+      );
+      filename = `reporte_2_${data.nombreMes.replace(/\s/g, '_')}.xlsx`;
+    } else {
+      // Mensual - usar función existente del frontend (por ahora devolvemos error)
+      res.status(501).json({ message: 'Reporte mensual aún no implementado en backend' });
+      return;
+    }
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+  }
+
+  @Get('reporte-mensual')
   getReporteMensual(
     @Query('anio') anio: string,
     @Query('mes') mes: string,
