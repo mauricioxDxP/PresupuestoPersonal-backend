@@ -296,7 +296,7 @@ export class TransaccionesService {
           archivos: { where: { eliminado: false } },
           usuario: { select: { id: true, nombre: true, email: true } },
         },
-        orderBy: { fecha: 'desc' },
+orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
       }),

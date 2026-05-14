@@ -9,10 +9,10 @@ import { GoogleStrategy } from './strategies/google.strategy';
 
 @Module({
   imports: [
+    ConfigModule.forRoot(),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
-      imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
+      useFactory: (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_SECRET') || 'default-secret-change-me',
         signOptions: { expiresIn: '24h' },
       }),
@@ -20,7 +20,7 @@ import { GoogleStrategy } from './strategies/google.strategy';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, GoogleStrategy],
+  providers: [AuthService, JwtStrategy, GoogleStrategy, ConfigService],
   exports: [AuthService, JwtModule],
 })
 export class AuthModule {}
