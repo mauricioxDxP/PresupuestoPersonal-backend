@@ -18,6 +18,8 @@ export interface TransaccionFilters {
   fechaFin?: string;
   categoriaId?: string;
   motivoId?: string;
+  moneda?: string;
+  billetera?: string;
 }
 
 // Reordenamiento de motivos

@@ -9,6 +9,7 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { CasaModule } from './casa/casa.module';
 import { PerfisModule } from './perfis/perfis.module';
+import { ConversionesModule } from './conversiones/conversiones.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { PerfisModule } from './perfis/perfis.module';
     TransaccionesModule,
     ArchivosModule,
     PerfisModule,
+    ConversionesModule,
   ],
 })
 export class AppModule {}

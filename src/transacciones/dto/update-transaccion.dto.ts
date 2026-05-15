@@ -1,4 +1,5 @@
-import { IsString, IsOptional, IsBoolean, IsNumber, IsUUID, IsDateString, IsNumberString } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsNumber, IsUUID, IsDateString, IsNumberString, IsEnum } from 'class-validator';
+import { Moneda, Billetera } from '@prisma/client';
 
 export class UpdateTransaccionDto {
   @IsUUID()
@@ -24,4 +25,16 @@ export class UpdateTransaccionDto {
   @IsBoolean()
   @IsOptional()
   facturable?: boolean;
+
+  @IsUUID()
+  @IsOptional()
+  casaId?: string;
+
+  @IsEnum(Moneda)
+  @IsOptional()
+  moneda?: Moneda;
+
+  @IsEnum(Billetera)
+  @IsOptional()
+  billetera?: Billetera;
 }

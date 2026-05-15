@@ -25,13 +25,15 @@ export class TransaccionesController {
     @Query('fechaFin') fechaFin?: string,
     @Query('categoriaId') categoriaId?: string,
     @Query('motivoId') motivoId?: string,
+    @Query('moneda') moneda?: string,
+    @Query('billetera') billetera?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Request() req?: any,
   ) {
     const xCasaId = req?.headers?.['x-casa-id'];
     return this.transaccionesService.findAll(
-      { fechaInicio, fechaFin, categoriaId, motivoId },
+      { fechaInicio, fechaFin, categoriaId, motivoId, moneda, billetera },
       { page: page ? parseInt(page, 10) : undefined, limit: limit ? parseInt(limit, 10) : undefined },
       req?.user,
       xCasaId,
@@ -44,11 +46,13 @@ export class TransaccionesController {
     @Query('fechaFin') fechaFin?: string,
     @Query('categoriaId') categoriaId?: string,
     @Query('motivoId') motivoId?: string,
+    @Query('moneda') moneda?: string,
+    @Query('billetera') billetera?: string,
     @Request() req?: any,
   ) {
     const xCasaId = req?.headers?.['x-casa-id'];
     return this.transaccionesService.getReportes(
-      { fechaInicio, fechaFin, categoriaId, motivoId },
+      { fechaInicio, fechaFin, categoriaId, motivoId, moneda, billetera },
       req?.user,
       xCasaId,
     );
@@ -61,15 +65,19 @@ export class TransaccionesController {
     @Query('mes') mes: string,
     @Request() req: any,
     @Res() res: Response,
+    @Query('moneda') moneda?: string,
+    @Query('billetera') billetera?: string,
   ) {
     const xCasaId = req?.headers?.['x-casa-id'];
     const includeEmpty = req?.query?.includeEmpty === 'true';
 
+    const filters = { moneda, billetera };
     const data = await this.transaccionesService.getReporteMensual(
       parseInt(anio),
       parseInt(mes),
       req?.user,
       xCasaId,
+      filters,
     );
 
     let buffer: Buffer;
@@ -106,9 +114,12 @@ export class TransaccionesController {
     @Query('anio') anio: string,
     @Query('mes') mes: string,
     @Request() req: any,
+    @Query('moneda') moneda?: string,
+    @Query('billetera') billetera?: string,
   ) {
     const xCasaId = req?.headers?.['x-casa-id'];
-    return this.transaccionesService.getReporteMensual(parseInt(anio), parseInt(mes), req?.user, xCasaId);
+    const filters = { moneda, billetera };
+    return this.transaccionesService.getReporteMensual(parseInt(anio), parseInt(mes), req?.user, xCasaId, filters);
   }
 
   @Get(':id')

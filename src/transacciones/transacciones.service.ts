@@ -234,6 +234,8 @@ export class TransaccionesService {
           facturable: createTransaccionDto.facturable ?? false,
           casaId,
           usuarioId: user.id,
+          moneda: createTransaccionDto.moneda ?? 'BOB',
+          billetera: createTransaccionDto.billetera ?? 'efectivo',
         },
         include: {
           motivo: true,
@@ -288,7 +290,7 @@ export class TransaccionesService {
     const skip = (page - 1) * limit;
 
     const [data, total] = await Promise.all([
-      this.prisma.transaccion.findMany({
+this.prisma.transaccion.findMany({
         where,
         include: {
           motivo: { include: { categoria: true } },
@@ -296,7 +298,7 @@ export class TransaccionesService {
           archivos: { where: { eliminado: false } },
           usuario: { select: { id: true, nombre: true, email: true } },
         },
-orderBy: { createdAt: 'desc' },
+        orderBy: { fecha: 'desc' },
         skip,
         take: limit,
       }),
@@ -513,7 +515,7 @@ orderBy: { createdAt: 'desc' },
     };
   }
 
-  async getReporteMensual(anio: number, mes: number, user?: AuthUser, xCasaId?: string) {
+  async getReporteMensual(anio: number, mes: number, user?: AuthUser, xCasaId?: string, filters?: { moneda?: string; billetera?: string }) {
     const casaFilter = await this.buildCasaFilter(user);
 
     let casaIdFilter: any = {};
@@ -540,12 +542,18 @@ orderBy: { createdAt: 'desc' },
       }
     }
 
+    // Filtros de moneda y billetera
+    const monedaFilter = filters?.moneda ? { moneda: filters.moneda } : {};
+    const billeteraFilter = (filters?.billetera && filters.billetera !== '') ? { billetera: filters.billetera } : {};
+
     const transacciones = await this.prisma.transaccion.findMany({
       where: {
         eliminado: false,
         ...casaFilter,
         ...casaIdFilter,
         ...visibilidadFilter,
+        ...monedaFilter,
+        ...billeteraFilter,
         fecha: {
           gte: fechaInicio,
           lte: fechaFin,
@@ -643,6 +651,14 @@ orderBy: { createdAt: 'desc' },
 
     if (filtros.motivoId) {
       where.motivoId = filtros.motivoId;
+    }
+
+    if (filtros.moneda) {
+      where.moneda = filtros.moneda;
+    }
+
+    if (filtros.billetera) {
+      where.billetera = filtros.billetera;
     }
 
     return where;

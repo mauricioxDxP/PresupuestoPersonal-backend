@@ -213,6 +213,17 @@ enum AccionHistorial {
   ELIMINAR
 }
 
+enum Moneda {
+  BOB
+  USD
+}
+
+enum Billetera {
+  efectivo
+  banco
+  app
+}
+
 model Transaccion {
   id          String   @id @default(uuid())
   motivoId    String
@@ -224,6 +235,8 @@ model Transaccion {
   eliminado   Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  moneda     Moneda   @default(BOB)
+  billetera  Billetera @default(efectivo)
 
   casaId String
   usuarioId String
@@ -265,4 +278,15 @@ model Archivo {
 
   transaccion Transaccion @relation(fields: [transaccionId], references: [id])
   casa        Casa        @relation(fields: [casaId], references: [id])
+}
+
+model Conversion {
+  id            String   @id @default(uuid())
+  monedaOrigen  String   @default("BOB")
+  monedaDestino String   @default("USD")
+  tasaCambio    Decimal  @db.Decimal(18, 8)
+  fuente       String   @default("exchangerate-api")
+  actualizadoEl DateTime @default(now())
+
+  @@unique([monedaOrigen, monedaDestino])
 }
