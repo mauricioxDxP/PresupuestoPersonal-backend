@@ -24,12 +24,12 @@ export class RolesGuard implements CanActivate {
       throw new ForbiddenException('No hay usuario autenticado');
     }
 
-    // ADMIN tiene acceso a todo
+    // ADMIN global tiene acceso a todo
     if (user.rol === Rol.ADMIN) {
       return true;
     }
 
-    // Verificar si el rol del usuario está en los roles requeridos
+    // Verificar si el rol global del usuario está en los roles requeridos
     const hasRole = requiredRoles.includes(user.rol);
 
     if (!hasRole) {

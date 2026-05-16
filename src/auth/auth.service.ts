@@ -47,11 +47,17 @@ export class AuthService {
     }
 
     const casaIds = user.casas.map(uc => uc.casaId);
+    const rolesPorCasa: Record<string, Rol> = {};
+    user.casas.forEach(uc => {
+      rolesPorCasa[uc.casaId] = uc.rol as Rol;
+    });
+
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
       rol: user.rol as Rol,
       casaIds,
+      rolesPorCasa,
       nombre: user.nombre,
     };
 
@@ -114,6 +120,7 @@ export class AuthService {
       email: user.email,
       rol: user.rol as Rol,
       casaIds: [],
+      rolesPorCasa: {},
       nombre: user.nombre,
     };
 
@@ -154,11 +161,17 @@ export class AuthService {
     if (user) {
       // Existing user logging in with Google
       const casaIds = user.casas.map(uc => uc.casaId);
+      const rolesPorCasa: Record<string, Rol> = {};
+      user.casas.forEach(uc => {
+        rolesPorCasa[uc.casaId] = uc.rol as Rol;
+      });
+
       const payload: JwtPayload = {
         sub: user.id,
         email: user.email,
         rol: user.rol as Rol,
         casaIds,
+        rolesPorCasa,
         nombre: user.nombre,
       };
 
@@ -225,11 +238,17 @@ export class AuthService {
     });
 
     const newCasaIds = user.casas.map(uc => uc.casaId);
+    const rolesPorCasa: Record<string, Rol> = {};
+    user.casas.forEach(uc => {
+      rolesPorCasa[uc.casaId] = uc.rol as Rol;
+    });
+
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
       rol: user.rol as Rol,
       casaIds: newCasaIds,
+      rolesPorCasa,
       nombre: user.nombre,
     };
 
@@ -285,11 +304,17 @@ export class AuthService {
       // If user has a refresh token stored, verify it matches
       // If not stored (legacy users) or different, allow refresh anyway
       const casaIds = user.casas.map(uc => uc.casaId);
+      const rolesPorCasa: Record<string, Rol> = {};
+      user.casas.forEach(uc => {
+        rolesPorCasa[uc.casaId] = uc.rol as Rol;
+      });
+
       const newPayload: JwtPayload = {
         sub: user.id,
         email: user.email,
         rol: user.rol as Rol,
         casaIds,
+        rolesPorCasa,
         nombre: user.nombre,
       };
 

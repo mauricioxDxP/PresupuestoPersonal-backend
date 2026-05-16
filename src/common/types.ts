@@ -13,8 +13,9 @@ export interface JwtPayload {
   sub: string;        // userId
   email: string;
   nombre: string;
-  rol: Rol;
+  rol: Rol;            // Solo ADMIN tiene rol global. Los demás siempre USUARIO
   casaIds: string[];  // Array de casas (vacío para ADMIN que tiene acceso a todas)
+  rolesPorCasa: Record<string, Rol>; // rol del usuario EN CADA casa
   iat?: number;
   exp?: number;
 }
@@ -25,6 +26,7 @@ export interface AuthUser {
   email: string;
   rol: Rol;
   casaIds: string[];
+  rolesPorCasa: Record<string, Rol>;
   nombre: string;
 }
 

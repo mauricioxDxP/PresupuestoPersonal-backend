@@ -13,17 +13,17 @@ import {
 import { UsersService } from './users.service';
 import { CreateUserDto, UpdateUserDto, AssignPermisosDto, AssignMotivoPermisosDto, AssignCasaDto, AssignPerfilDto } from './dto/users.dto';
 import { JwtAuthGuard } from '../auth/guards/auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { RolesPorCasaGuard } from '../auth/guards/roles-por-casa.guard';
+import { RolesPorCasa } from '../auth/decorators/roles.decorator';
 import { Rol } from '../common/types';
 
 @Controller('users')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesPorCasaGuard)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Post()
-  @Roles(Rol.MAESTRO_CASA, Rol.ADMIN)
+  @RolesPorCasa(Rol.MAESTRO_CASA, Rol.ADMIN)
   create(@Body() createUserDto: CreateUserDto, @Query('casaId') casaId: string, @Request() req: any) {
     return this.usersService.create(createUserDto, casaId, req.user);
   }
@@ -54,13 +54,13 @@ export class UsersController {
   }
 
   @Delete(':id')
-  @Roles(Rol.MAESTRO_CASA, Rol.ADMIN)
+  @RolesPorCasa(Rol.MAESTRO_CASA, Rol.ADMIN)
   remove(@Param('id') id: string, @Request() req: any) {
     return this.usersService.remove(id, req.user);
   }
 
   @Post(':usuarioId/permisos/categoria')
-  @Roles(Rol.MAESTRO_CASA, Rol.ADMIN)
+  @RolesPorCasa(Rol.MAESTRO_CASA, Rol.ADMIN)
   assignCategoriaPermiso(
     @Param('usuarioId') usuarioId: string,
     @Body() assignPermisosDto: AssignPermisosDto,
@@ -70,7 +70,7 @@ export class UsersController {
   }
 
   @Post(':usuarioId/permisos/motivo')
-  @Roles(Rol.MAESTRO_CASA, Rol.ADMIN)
+  @RolesPorCasa(Rol.MAESTRO_CASA, Rol.ADMIN)
   assignMotivoPermiso(
     @Param('usuarioId') usuarioId: string,
     @Body() assignMotivoPermisosDto: AssignMotivoPermisosDto,
@@ -86,7 +86,7 @@ export class UsersController {
   }
 
   @Post(':usuarioId/casas')
-  @Roles(Rol.MAESTRO_CASA, Rol.ADMIN)
+  @RolesPorCasa(Rol.MAESTRO_CASA, Rol.ADMIN)
   assignCasa(
     @Param('usuarioId') usuarioId: string,
     @Body() assignCasaDto: AssignCasaDto,
@@ -96,7 +96,7 @@ export class UsersController {
   }
 
   @Delete(':usuarioId/casas/:casaId')
-  @Roles(Rol.MAESTRO_CASA, Rol.ADMIN)
+  @RolesPorCasa(Rol.MAESTRO_CASA, Rol.ADMIN)
   removeCasa(
     @Param('usuarioId') usuarioId: string,
     @Param('casaId') casaId: string,
@@ -107,7 +107,7 @@ export class UsersController {
 
   // Profile (Perfil de Permisos) management
   @Post(':usuarioId/perfil')
-  @Roles(Rol.MAESTRO_CASA, Rol.ADMIN)
+  @RolesPorCasa(Rol.MAESTRO_CASA, Rol.ADMIN)
   assignPerfil(
     @Param('usuarioId') usuarioId: string,
     @Body() assignPerfilDto: AssignPerfilDto,
@@ -126,7 +126,7 @@ export class UsersController {
   }
 
   @Delete(':usuarioId/perfil')
-  @Roles(Rol.MAESTRO_CASA, Rol.ADMIN)
+  @RolesPorCasa(Rol.MAESTRO_CASA, Rol.ADMIN)
   removePerfil(
     @Param('usuarioId') usuarioId: string,
     @Query('casaId') casaId: string,

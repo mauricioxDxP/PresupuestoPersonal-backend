@@ -15,6 +15,7 @@ interface AuthUser {
   id: string;
   rol: Rol;
   casaIds: string[];
+  rolesPorCasa?: Record<string, Rol>;
 }
 
 @Injectable()
@@ -49,14 +50,12 @@ export class UsersService {
     assignCasaDto: AssignCasaDto,
     requestingUser: AuthUser,
   ) {
-    // Only ADMIN or MAESTRO_CASA can assign casas
-    if (requestingUser.rol !== Rol.ADMIN && requestingUser.rol !== Rol.MAESTRO_CASA) {
-      throw new ForbiddenException('Solo el usuario maestro o administrador puede asignar casas');
-    }
-
-    // For MAESTRO_CASA, verify they own the target casa
-    if (requestingUser.rol === Rol.MAESTRO_CASA && !requestingUser.casaIds.includes(assignCasaDto.casaId)) {
-      throw new ForbiddenException('No puedes asignar una casa que no te pertenece');
+    // Only ADMIN global can assign casas without per-casa check
+    if (requestingUser.rol !== Rol.ADMIN) {
+      const perCasaRol = await getPerCasaRol(this.prisma, requestingUser, assignCasaDto.casaId);
+      if (perCasaRol !== Rol.MAESTRO_CASA) {
+        throw new ForbiddenException('Solo el usuario maestro o administrador puede asignar casas');
+      }
     }
 
     // Check if user exists
@@ -95,12 +94,11 @@ export class UsersService {
     casaId: string,
     requestingUser: AuthUser,
   ) {
-    if (requestingUser.rol !== Rol.ADMIN && requestingUser.rol !== Rol.MAESTRO_CASA) {
-      throw new ForbiddenException('Solo el usuario maestro o administrador puede remover casas');
-    }
-
-    if (requestingUser.rol === Rol.MAESTRO_CASA && !requestingUser.casaIds.includes(casaId)) {
-      throw new ForbiddenException('No puedes remover una casa que no te pertenece');
+    if (requestingUser.rol !== Rol.ADMIN) {
+      const perCasaRol = await getPerCasaRol(this.prisma, requestingUser, casaId);
+      if (perCasaRol !== Rol.MAESTRO_CASA) {
+        throw new ForbiddenException('Solo el usuario maestro o administrador puede remover casas');
+      }
     }
 
     const usuarioCasa = await this.prisma.usuarioCasa.findUnique({
@@ -123,14 +121,11 @@ export class UsersService {
   }
 
   async create(createUserDto: CreateUserDto, casaId: string, requestingUser: AuthUser) {
-    // Only MAESTRO_CASA can create users
-    if (requestingUser.rol !== Rol.MAESTRO_CASA && requestingUser.rol !== Rol.ADMIN) {
-      throw new ForbiddenException('Solo el usuario maestro puede crear usuarios');
-    }
-
-    // For MAESTRO_CASA, verify they own the target casa
-    if (requestingUser.rol === Rol.MAESTRO_CASA && !requestingUser.casaIds.includes(casaId)) {
-      throw new ForbiddenException('No puedes crear usuarios en otra casa');
+    if (requestingUser.rol !== Rol.ADMIN) {
+      const perCasaRol = await getPerCasaRol(this.prisma, requestingUser, casaId);
+      if (perCasaRol !== Rol.MAESTRO_CASA) {
+        throw new ForbiddenException('Solo el usuario maestro puede crear usuarios');
+      }
     }
 
     const existingUser = await this.prisma.usuario.findUnique({
@@ -172,11 +167,7 @@ export class UsersService {
   }
 
   async findAll(casaId: string, requestingUser: AuthUser) {
-    if (requestingUser.rol === Rol.USUARIO) {
-      throw new ForbiddenException('No tienes permisos para ver usuarios');
-    }
-
-    // ADMIN can see all users without casaId filter
+    // ADMIN global can see all without casaId filter
     if (requestingUser.rol === Rol.ADMIN && !casaId) {
       const usuarios = await this.prisma.usuario.findMany({
         where: { eliminado: false },
@@ -189,7 +180,7 @@ export class UsersService {
           eliminado: true,
           casas: {
             include: {
-              casa: true,  // Include full casa to avoid recursion
+              casa: true,
             },
           },
           categoriaPermisos: {
@@ -205,7 +196,6 @@ export class UsersService {
         },
       });
       
-      // Map to restructure for frontend compatibility
       return usuarios.map(u => ({
         ...u,
         casas: u.casas.map(uc => ({
@@ -216,19 +206,17 @@ export class UsersService {
       }));
     }
 
-    // MAESTRO_CASA and USUARIO need a valid casaId
-    if (!casaId && requestingUser.rol !== Rol.ADMIN) {
+    // Need casaId for MAESTRO_CASA or ADMIN with filter
+    if (!casaId) {
       throw new ForbiddenException('Debes especificar una casa para ver usuarios');
     }
 
-    // MAESTRO_CASA can only see users in their own casas
-    if (requestingUser.rol === Rol.MAESTRO_CASA && !requestingUser.casaIds.includes(casaId)) {
-      throw new ForbiddenException('No puedes ver usuarios de otra casa');
-    }
-
-    // For ADMIN with casaId filter, check it
-    if (requestingUser.rol === Rol.ADMIN && casaId && !requestingUser.casaIds.includes(casaId) && requestingUser.casaIds.length > 0) {
-      throw new ForbiddenException('No puedes ver usuarios de otra casa');
+    // Check per-casa rol using UsuarioCasa, not global rol
+    const perCasaRol = await getPerCasaRol(this.prisma, requestingUser, casaId);
+    
+    // Only MAESTRO_CASA or ADMIN per-casa can see users
+    if (perCasaRol !== Rol.MAESTRO_CASA && perCasaRol !== Rol.ADMIN) {
+      throw new ForbiddenException('No tienes permisos para ver usuarios de esta casa');
     }
 
     // Get all users that have this casaId in their UsuarioCasa relation
@@ -273,15 +261,30 @@ export class UsersService {
     }
 
     // Users can see themselves, Maestro can see users in their casas
-    if (requestingUser.rol === Rol.USUARIO && requestingUser.id !== id) {
-      throw new ForbiddenException('No tienes permisos para ver este usuario');
-    }
-
-    if (requestingUser.rol === Rol.MAESTRO_CASA) {
-      const userCasaIds = user.casas.map(uc => uc.casaId);
-      const hasAccess = userCasaIds.some(cid => requestingUser.casaIds.includes(cid));
+    if (requestingUser.rol === Rol.ADMIN) {
+      // Allow
+    } else if (requestingUser.id === id) {
+      // Users can always see themselves
+    } else {
+      // Check if requesting user has access to any of target user's casas
+      const requestingUserCasaIds = requestingUser.casaIds || [];
+      const targetUserCasaIds = user.casas.map(uc => uc.casaId);
+      const hasAccess = targetUserCasaIds.some(cid => requestingUserCasaIds.includes(cid));
       if (!hasAccess) {
-        throw new ForbiddenException('No tienes permisos para ver este usuario');
+        // Check if user has MAESTRO_CASA in any shared casa
+        let isMaestroInSharedCasa = false;
+        for (const cid of requestingUserCasaIds) {
+          if (targetUserCasaIds.includes(cid)) {
+            const perCasaRol = await getPerCasaRol(this.prisma, requestingUser, cid);
+            if (perCasaRol === Rol.MAESTRO_CASA) {
+              isMaestroInSharedCasa = true;
+              break;
+            }
+          }
+        }
+        if (!isMaestroInSharedCasa) {
+          throw new ForbiddenException('No tienes permisos para ver este usuario');
+        }
       }
     }
 
@@ -301,29 +304,41 @@ export class UsersService {
       throw new NotFoundException('Usuario no encontrado');
     }
 
-    // Only Maestro can update users in their casas, or user can update themselves
-    if (requestingUser.rol === Rol.USUARIO && requestingUser.id !== id) {
+    // Only ADMIN can update other users. User can update themselves
+    if (requestingUser.rol === Rol.ADMIN) {
+      // Allow
+    } else if (requestingUser.id === id) {
+      // User can update themselves
+    } else {
       throw new ForbiddenException('No tienes permisos para actualizar este usuario');
     }
 
-    if (requestingUser.rol === Rol.MAESTRO_CASA) {
-      // Check if user being updated is in one of requesting user's casas
+    // MAESTRO_CASA by casa check for usuarios in their casas
+    if (requestingUser.rol !== Rol.ADMIN) {
       const userCasas = await this.prisma.usuarioCasa.findMany({
         where: { usuarioId: id },
       });
-      const userCasaIds = userCasas.map(uc => uc.casaId);
-      const hasAccess = userCasaIds.some(cid => requestingUser.casaIds.includes(cid));
-      if (!hasAccess) {
+      const targetCasaIds = userCasas.map(uc => uc.casaId);
+      const requestingCasaIds = requestingUser.casaIds || [];
+
+      // Check if there's a shared casa where requesting user is MAESTRO_CASA
+      let isMaestroInSharedCasa = false;
+      for (const cid of requestingCasaIds) {
+        if (targetCasaIds.includes(cid)) {
+          const perCasaRol = await getPerCasaRol(this.prisma, requestingUser, cid);
+          if (perCasaRol === Rol.MAESTRO_CASA) {
+            isMaestroInSharedCasa = true;
+            break;
+          }
+        }
+      }
+
+      if (!isMaestroInSharedCasa) {
         throw new ForbiddenException('No puedes actualizar usuarios de otra casa');
       }
+
       if (updateUserDto.puedeEliminar !== undefined && requestingUser.id === id) {
         throw new ForbiddenException('No puedes eliminarte a ti mismo');
-      }
-    }
-
-    if (requestingUser.rol === Rol.USUARIO) {
-      if (requestingUser.id !== id) {
-        throw new ForbiddenException('No tienes permisos para actualizar este usuario');
       }
     }
 
@@ -348,18 +363,21 @@ export class UsersService {
       throw new NotFoundException('Usuario no encontrado');
     }
 
-    if (requestingUser.rol !== Rol.MAESTRO_CASA && requestingUser.rol !== Rol.ADMIN) {
-      throw new ForbiddenException('Solo el usuario maestro puede eliminar usuarios');
-    }
-
-    if (requestingUser.rol === Rol.MAESTRO_CASA) {
+    if (requestingUser.rol !== Rol.ADMIN) {
       const userCasas = await this.prisma.usuarioCasa.findMany({
         where: { usuarioId: id },
       });
-      const userCasaIds = userCasas.map(uc => uc.casaId);
-      const hasAccess = userCasaIds.some(cid => requestingUser.casaIds.includes(cid));
+      // Check if requesting user has MAESTRO_CASA role in any of the target user's casas
+      let hasAccess = false;
+      for (const uc of userCasas) {
+        const perCasaRol = await getPerCasaRol(this.prisma, requestingUser, uc.casaId);
+        if (perCasaRol === Rol.MAESTRO_CASA) {
+          hasAccess = true;
+          break;
+        }
+      }
       if (!hasAccess) {
-        throw new ForbiddenException('No puedes eliminar usuarios de otra casa');
+        throw new ForbiddenException('Solo el usuario maestro puede eliminar usuarios');
       }
     }
 
@@ -379,29 +397,6 @@ export class UsersService {
     assignPermisosDto: AssignPermisosDto,
     requestingUser: AuthUser,
   ) {
-    if (requestingUser.rol !== Rol.MAESTRO_CASA && requestingUser.rol !== Rol.ADMIN) {
-      throw new ForbiddenException('Solo el usuario maestro puede asignar permisos');
-    }
-
-    const usuario = await this.prisma.usuario.findUnique({
-      where: { id: usuarioId, eliminado: false },
-    });
-
-    if (!usuario) {
-      throw new NotFoundException('Usuario no encontrado');
-    }
-
-    // Verify the target user belongs to one of requesting user's casas
-    const usuarioCasas = await this.prisma.usuarioCasa.findMany({
-      where: { usuarioId },
-    });
-    const usuarioCasaIds = usuarioCasas.map(uc => uc.casaId);
-    const hasAccess = requestingUser.rol === Rol.ADMIN || 
-      usuarioCasaIds.some(cid => requestingUser.casaIds.includes(cid));
-    if (!hasAccess) {
-      throw new ForbiddenException('No puedes asignar permisos a usuarios de otra casa');
-    }
-
     // Verify categoria belongs to one of requesting user's casas
     const categoria = await this.prisma.categoria.findUnique({
       where: { id: assignPermisosDto.categoriaId },
@@ -411,8 +406,19 @@ export class UsersService {
       throw new NotFoundException('Categoría no encontrada');
     }
 
-    if (requestingUser.rol !== Rol.ADMIN && !requestingUser.casaIds.includes(categoria.casaId)) {
-      throw new NotFoundException('Categoría no encontrada en tu casa');
+    if (requestingUser.rol !== Rol.ADMIN) {
+      const perCasaRol = await getPerCasaRol(this.prisma, requestingUser, categoria.casaId);
+      if (perCasaRol !== Rol.MAESTRO_CASA) {
+        throw new ForbiddenException('No tienes permisos para asignar permisos en esta casa');
+      }
+    }
+
+    const usuario = await this.prisma.usuario.findUnique({
+      where: { id: usuarioId, eliminado: false },
+    });
+
+    if (!usuario) {
+      throw new NotFoundException('Usuario no encontrado');
     }
 
     return this.prisma.usuarioCategoriaPermiso.upsert({
@@ -453,8 +459,11 @@ export class UsersService {
     casaId: string,
     requestingUser: AuthUser,
   ) {
-    if (requestingUser.rol !== Rol.MAESTRO_CASA && requestingUser.rol !== Rol.ADMIN) {
-      throw new ForbiddenException('Solo el usuario maestro puede asignar perfiles');
+    if (requestingUser.rol !== Rol.ADMIN) {
+      const perCasaRol = await getPerCasaRol(this.prisma, requestingUser, casaId);
+      if (perCasaRol !== Rol.MAESTRO_CASA) {
+        throw new ForbiddenException('Solo el usuario maestro puede asignar perfiles');
+      }
     }
 
     const usuario = await this.prisma.usuario.findUnique({
@@ -463,17 +472,6 @@ export class UsersService {
 
     if (!usuario) {
       throw new NotFoundException('Usuario no encontrado');
-    }
-
-    // Verify the target user belongs to the requesting user's casas
-    const usuarioCasas = await this.prisma.usuarioCasa.findMany({
-      where: { usuarioId },
-    });
-    const usuarioCasaIds = usuarioCasas.map(uc => uc.casaId);
-    const hasAccess = requestingUser.rol === Rol.ADMIN || 
-      (usuarioCasaIds.includes(casaId) && requestingUser.casaIds.includes(casaId));
-    if (!hasAccess) {
-      throw new ForbiddenException('No puedes asignar perfiles a usuarios de otra casa');
     }
 
     // Verify perfil exists and belongs to the same casa
@@ -487,10 +485,6 @@ export class UsersService {
 
     if (perfil.casaId !== casaId) {
       throw new ForbiddenException('El perfil no pertenece a esta casa');
-    }
-
-    if (requestingUser.rol !== Rol.ADMIN && !requestingUser.casaIds.includes(casaId)) {
-      throw new ForbiddenException('No tienes acceso a esta casa');
     }
 
     // Check if user already has a perfil for this casa
@@ -538,8 +532,11 @@ export class UsersService {
     casaId: string,
     requestingUser: AuthUser,
   ) {
-    if (requestingUser.rol !== Rol.MAESTRO_CASA && requestingUser.rol !== Rol.ADMIN) {
-      throw new ForbiddenException('Solo el usuario maestro puede remover perfiles');
+    if (requestingUser.rol !== Rol.ADMIN) {
+      const perCasaRol = await getPerCasaRol(this.prisma, requestingUser, casaId);
+      if (perCasaRol !== Rol.MAESTRO_CASA) {
+        throw new ForbiddenException('Solo el usuario maestro puede remover perfiles');
+      }
     }
 
     const usuarioPerfil = await this.prisma.usuarioPerfil.findFirst({
@@ -548,10 +545,6 @@ export class UsersService {
 
     if (!usuarioPerfil) {
       throw new NotFoundException('El usuario no tiene un perfil asignado en esta casa');
-    }
-
-    if (requestingUser.rol !== Rol.ADMIN && !requestingUser.casaIds.includes(casaId)) {
-      throw new ForbiddenException('No tienes acceso a esta casa');
     }
 
     await this.prisma.usuarioPerfil.delete({
@@ -569,13 +562,14 @@ export class UsersService {
     casaId: string,
     requestingUser: AuthUser,
   ) {
-    // Any authenticated user can see another user's perfil if they have access
-    if (requestingUser.rol === Rol.USUARIO && requestingUser.id !== usuarioId) {
-      throw new ForbiddenException('No tienes permisos para ver este perfil');
-    }
-
-    if (requestingUser.rol === Rol.MAESTRO_CASA && !requestingUser.casaIds.includes(casaId)) {
-      throw new ForbiddenException('No tienes acceso a esta casa');
+    // Check access: ADMIN global, or MAESTRO_CASA/USUARIO in the same casa can view
+    if (requestingUser.rol !== Rol.ADMIN && requestingUser.id !== usuarioId) {
+      // Check if requesting user has access to this casa
+      const perCasaRol = await getPerCasaRol(this.prisma, requestingUser, casaId);
+      if (!perCasaRol) {
+        throw new ForbiddenException('No tienes acceso a esta casa');
+      }
+      // MAESTRO_CASA and USUARIO in same casa can view other users' perfils
     }
 
     const usuarioPerfil = await this.prisma.usuarioPerfil.findFirst({
@@ -603,29 +597,6 @@ export class UsersService {
     assignMotivoPermisosDto: AssignMotivoPermisosDto,
     requestingUser: AuthUser,
   ) {
-    if (requestingUser.rol !== Rol.MAESTRO_CASA && requestingUser.rol !== Rol.ADMIN) {
-      throw new ForbiddenException('Solo el usuario maestro puede asignar permisos');
-    }
-
-    const usuario = await this.prisma.usuario.findUnique({
-      where: { id: usuarioId, eliminado: false },
-    });
-
-    if (!usuario) {
-      throw new NotFoundException('Usuario no encontrado');
-    }
-
-    // Verify the target user belongs to one of requesting user's casas
-    const usuarioCasas = await this.prisma.usuarioCasa.findMany({
-      where: { usuarioId },
-    });
-    const usuarioCasaIds = usuarioCasas.map(uc => uc.casaId);
-    const hasAccess = requestingUser.rol === Rol.ADMIN || 
-      usuarioCasaIds.some(cid => requestingUser.casaIds.includes(cid));
-    if (!hasAccess) {
-      throw new ForbiddenException('No puedes asignar permisos a usuarios de otra casa');
-    }
-
     // Verify motivo belongs to one of requesting user's casas
     const motivo = await this.prisma.motivo.findUnique({
       where: { id: assignMotivoPermisosDto.motivoId },
@@ -635,8 +606,19 @@ export class UsersService {
       throw new NotFoundException('Motivo no encontrado');
     }
 
-    if (requestingUser.rol !== Rol.ADMIN && !requestingUser.casaIds.includes(motivo.casaId)) {
-      throw new NotFoundException('Motivo no encontrado en tu casa');
+    if (requestingUser.rol !== Rol.ADMIN) {
+      const perCasaRol = await getPerCasaRol(this.prisma, requestingUser, motivo.casaId);
+      if (perCasaRol !== Rol.MAESTRO_CASA) {
+        throw new ForbiddenException('No tienes permisos para asignar permisos en esta casa');
+      }
+    }
+
+    const usuario = await this.prisma.usuario.findUnique({
+      where: { id: usuarioId, eliminado: false },
+    });
+
+    if (!usuario) {
+      throw new NotFoundException('Usuario no encontrado');
     }
 
     return this.prisma.usuarioMotivoPermiso.upsert({

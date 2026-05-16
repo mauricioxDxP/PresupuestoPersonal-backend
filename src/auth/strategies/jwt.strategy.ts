@@ -15,7 +15,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload) {
-    if (!payload.sub || !payload.email || !payload.rol) {
+    if (!payload.sub || !payload.email) {
       throw new UnauthorizedException('Token inválido');
     }
 
@@ -24,6 +24,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       email: payload.email,
       rol: payload.rol as Rol,
       casaIds: payload.casaIds || [],
+      rolesPorCasa: payload.rolesPorCasa || {},
       nombre: payload.nombre || '',
     };
   }

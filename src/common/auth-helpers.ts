@@ -6,10 +6,12 @@ interface AuthUser {
   id: string;
   rol: Rol;
   casaIds: string[];
+  rolesPorCasa?: Record<string, Rol>; // Desde JWT - evita queries a la DB
 }
 
 /**
- * Obtiene el rol del usuario en una casa específica desde UsuarioCasa.
+ * Obtiene el rol del usuario en una casa específica.
+ * Usa rolesPorCasa del JWT si está disponible, evita query a la DB.
  * Si es ADMIN global, retorna ADMIN sin consultar DB.
  */
 export async function getPerCasaRol(
@@ -22,6 +24,12 @@ export async function getPerCasaRol(
     return Rol.ADMIN;
   }
 
+  // Primero verificar en rolesPorCasa del JWT (evita DB query)
+  if (user.rolesPorCasa && user.rolesPorCasa[casaId]) {
+    return user.rolesPorCasa[casaId];
+  }
+
+  // Fallback: consultar DB para tokens antiguos sin rolesPorCasa
   const usuarioCasa = await prisma.usuarioCasa.findUnique({
     where: {
       usuarioId_casaId: {
@@ -32,7 +40,6 @@ export async function getPerCasaRol(
     select: { rol: true },
   });
 
-  // Map Prisma's Rol enum to our Rol enum
   if (!usuarioCasa?.rol) return null;
   return usuarioCasa.rol as unknown as Rol;
 }
@@ -89,6 +96,10 @@ export async function hasFullAccess(
     return rol === Rol.MAESTRO_CASA;
   } else {
     // Verificar si tiene MAESTRO_CASA en alguna de sus casas
+    if (user.rolesPorCasa) {
+      return Object.values(user.rolesPorCasa).some(r => r === Rol.MAESTRO_CASA);
+    }
+    // Fallback para tokens antiguos
     for (const cid of user.casaIds) {
       const rol = await getPerCasaRol(prisma, user, cid);
       if (rol === Rol.MAESTRO_CASA) return true;

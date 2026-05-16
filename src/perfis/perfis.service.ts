@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Rol } from '../common/types';
 import { CreatePerfilDto, UpdatePerfilDto, AssignPerfilPermisoDto } from './dto/perfis.dto';
+import { getPerCasaRol } from '../common/auth-helpers';
 
 @Injectable()
 export class PerfisService {
@@ -14,9 +15,12 @@ export class PerfisService {
   }
 
   async create(createPerfilDto: CreatePerfilDto, requestingUser: any) {
-    // Only MAESTRO_CASA or ADMIN can create perfis
-    if (requestingUser.rol !== Rol.MAESTRO_CASA && requestingUser.rol !== Rol.ADMIN) {
-      throw new ForbiddenException('Solo el usuario maestro o administrador puede crear perfiles');
+    // Only MAESTRO_CASA (por casa) or ADMIN can create perfis
+    if (requestingUser.rol !== Rol.ADMIN) {
+      const perCasaRol = await getPerCasaRol(this.prisma, requestingUser, createPerfilDto.casaId);
+      if (perCasaRol !== Rol.MAESTRO_CASA) {
+        throw new ForbiddenException('Solo el usuario maestro o administrador puede crear perfiles');
+      }
     }
 
     // Check if perfil with same name exists in this casa
@@ -38,8 +42,11 @@ export class PerfisService {
   }
 
   async findAll(casaId: string, requestingUser: any) {
-    if (requestingUser.rol !== Rol.MAESTRO_CASA && requestingUser.rol !== Rol.ADMIN) {
-      throw new ForbiddenException('Solo el usuario maestro o administrador puede ver perfiles');
+    if (requestingUser.rol !== Rol.ADMIN) {
+      const perCasaRol = await getPerCasaRol(this.prisma, requestingUser, casaId);
+      if (perCasaRol !== Rol.MAESTRO_CASA) {
+        throw new ForbiddenException('Solo el usuario maestro o administrador puede ver perfiles');
+      }
     }
 
     return this.prisma.perfil.findMany({
@@ -77,8 +84,11 @@ export class PerfisService {
     }
 
     // Check access
-    if (requestingUser.rol !== Rol.ADMIN && !requestingUser.casaIds.includes(perfil.casaId)) {
-      throw new ForbiddenException('No tienes acceso a este perfil');
+    if (requestingUser.rol !== Rol.ADMIN) {
+      const perCasaRol = await getPerCasaRol(this.prisma, requestingUser, perfil.casaId);
+      if (perCasaRol !== Rol.MAESTRO_CASA) {
+        throw new ForbiddenException('No tienes acceso a este perfil');
+      }
     }
 
     return perfil;
@@ -91,8 +101,11 @@ export class PerfisService {
       throw new NotFoundException('Perfil no encontrado');
     }
 
-    if (requestingUser.rol !== Rol.ADMIN && !requestingUser.casaIds.includes(perfil.casaId)) {
-      throw new ForbiddenException('No tienes acceso a este perfil');
+    if (requestingUser.rol !== Rol.ADMIN) {
+      const perCasaRol = await getPerCasaRol(this.prisma, requestingUser, perfil.casaId);
+      if (perCasaRol !== Rol.MAESTRO_CASA) {
+        throw new ForbiddenException('No tienes acceso a este perfil');
+      }
     }
 
     // Check duplicate name if updating nombre
@@ -121,8 +134,11 @@ export class PerfisService {
       throw new NotFoundException('Perfil no encontrado');
     }
 
-    if (requestingUser.rol !== Rol.ADMIN && !requestingUser.casaIds.includes(perfil.casaId)) {
-      throw new ForbiddenException('No tienes acceso a este perfil');
+    if (requestingUser.rol !== Rol.ADMIN) {
+      const perCasaRol = await getPerCasaRol(this.prisma, requestingUser, perfil.casaId);
+      if (perCasaRol !== Rol.MAESTRO_CASA) {
+        throw new ForbiddenException('No tienes acceso a este perfil');
+      }
     }
 
     // Check if perfil has users assigned
@@ -199,8 +215,11 @@ export class PerfisService {
       throw new NotFoundException('Perfil no encontrado');
     }
 
-    if (requestingUser.rol !== Rol.ADMIN && !requestingUser.casaIds.includes(perfil.casaId)) {
-      throw new ForbiddenException('No tienes acceso a este perfil');
+    if (requestingUser.rol !== Rol.ADMIN) {
+      const perCasaRol = await getPerCasaRol(this.prisma, requestingUser, perfil.casaId);
+      if (perCasaRol !== Rol.MAESTRO_CASA) {
+        throw new ForbiddenException('No tienes acceso a este perfil');
+      }
     }
 
     // Verify categoria belongs to same casa
@@ -249,8 +268,11 @@ export class PerfisService {
       throw new NotFoundException('Perfil no encontrado');
     }
 
-    if (requestingUser.rol !== Rol.ADMIN && !requestingUser.casaIds.includes(perfil.casaId)) {
-      throw new ForbiddenException('No tienes acceso a este perfil');
+    if (requestingUser.rol !== Rol.ADMIN) {
+      const perCasaRol = await getPerCasaRol(this.prisma, requestingUser, perfil.casaId);
+      if (perCasaRol !== Rol.MAESTRO_CASA) {
+        throw new ForbiddenException('No tienes acceso a este perfil');
+      }
     }
 
     // Verify motivo belongs to same casa
